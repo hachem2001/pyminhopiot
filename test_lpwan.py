@@ -1,4 +1,4 @@
-from main import *
+from lpwan_jitter import *
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
@@ -6,17 +6,17 @@ GATEWAY_LOGGER.set_verbose(True)
 NODE_LOGGER.set_verbose(False)
 SIMULATOR_LOGGER.set_verbose(False)
 SOURCE_LOGGER.set_verbose(False)
-CHANNEL_LOGGER.set_verbose(True)
+CHANNEL_LOGGER.set_verbose(False)
 
 # Example usage:
-sim = Simulator(20, 0.01)
+sim = Simulator(30, 0.01)
 
 # Create nodes with coordinates
-source = Source(0, 0, interval=5)
-node1 = Node(5, 0)
-node2 = Node(10, 0)
-node3 = Node(15, 0)
-gateway = Gateway(20, 0)
+source = SourceLP(20, 0)
+node1 = NodeLP(5, 0)
+node2 = NodeLP(10, 0)
+node3 = NodeLP(15, 0)
+gateway = GatewayLP(0, 0)
 
 # Create channel
 channel = Channel()
