@@ -43,24 +43,31 @@ class PacketLP(Packet):
             - whether it is an ACK or not (and which packet_id it acks if so.)
             The last_in_path
     """
-    packet_id = 1  # Static variable to the class
+
+    packet_id_counter = 1  # Static variable to the class
+
+    class DataLP:
+        def __init__(self, source_id: int, packet_id : int, ack : (bool, int)= (False, -1)):
+            self.packet_id = packet_id
+            self.source_id = source_id
+            self.last_in_path = source_id
+            self.ack = ack
+        
+        def __repr__(self) -> str:
+            return f'<{type(self)}{{{self.packet_id},{self.source_id},{self.last_in_path},{self.ack}}}>'
+        
+
 
     def __init__(self, source_id: int, ack : (bool, int)= (False, -1)):
         """
         Re-insisting : "source_id" would be the gateway's ID if the
         gateway is sending a message back to a source.
         """
-        data = {
-            packet_id: packet_id,
-            source_id: source_id,
-            last_in_path: source_id,
-            ack: ack,
-        }
-
+        data = self.DataLP(source_id, PacketLP.packet_id_counter, ack)
         super().__init__(data, source_id)
-        packet_id += 1
+        PacketLP.packet_id_counter += 1
 
-    def get_id():
+    def get_id(self):
         return self.data.packet_id
 
 
@@ -71,7 +78,7 @@ class GatewayLP(Gateway):
         Invokes a send_ack
         """
         GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
-        send_ack(Simulator, packet)
+        self.send_ack(simulator, packet)
 
     def send_ack(self, simulator: 'Simulator', in_packet: 'PacketLP'):
         """
@@ -94,7 +101,7 @@ class NodeLP(Node):
         # A packet_id is removed from the list when the node hears back its echo
         # This way, a packet never gets retransmitted twice by the same node.
 
-    def process_packet(self, simulator: 'Simulator', packet: 'Packet'):
+    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
         # How to trigger a computer scientist/programmer
         if packet.data.last_in_path in self.last_packets:
             # Remove id from the list
@@ -126,6 +133,6 @@ class SourceLP(NodeLP):
         return
 
     def send_packet(self, simulator: Simulator):
-        packet = PakcetLP(self.get_id(), False)
+        packet = PacketLP(self.get_id(), False)
         SOURCE_LOGGER.log(f"Source {self.node_id} sending packet: {packet}")
         self.broadcast_packet(simulator, packet)
