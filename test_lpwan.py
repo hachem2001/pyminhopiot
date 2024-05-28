@@ -1,15 +1,17 @@
 from lpwan_jitter import *
 
+random.seed(1)
+
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
 GATEWAY_LOGGER.set_verbose(True)
 NODE_LOGGER.set_verbose(False)
 SIMULATOR_LOGGER.set_verbose(False)
-SOURCE_LOGGER.set_verbose(False)
+SOURCE_LOGGER.set_verbose(True)
 CHANNEL_LOGGER.set_verbose(False)
 
 # Example usage:
-sim = Simulator(30, 0.01)
+sim = Simulator(50, 0.01)
 
 # Create nodes with coordinates
 source = SourceLP(20, 0)

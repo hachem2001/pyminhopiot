@@ -30,7 +30,7 @@ CHANNEL_LOGGER = Logger("channel", verbose=True)
 class Event:
     def __init__(self, time: float, callback: Callable[['Simulator'], Any], *args, **kwargs):
         """
-        An event to be executed.
+        An event to be executed. No re-scheduling possible, however cancellation IS possible.
         :param time: Float representing time in milliseconds.
         :param callback: Event callback when the time of execution of the event arrives.
         :param args: Ordered arguments of callback
@@ -40,12 +40,17 @@ class Event:
         self.callback = callback
         self.args = args
         self.kwargs = kwargs
+        self.effective = True # Parameter allowing the cancellation of events.
 
     def __lt__(self, other: 'Event'):
         return self.time < other.time
 
     def execute(self, simulator: 'Simulator'):
-        self.callback(simulator, *self.args, **self.kwargs)
+        if self.effective:
+            self.callback(simulator, *self.args, **self.kwargs)
+    
+    def cancel(self):
+        self.effective = False
 
 
 class Simulator:
@@ -65,11 +70,16 @@ class Simulator:
         # How long to sleep before every event execution.
         self.simulations_real_inertia = simulations_real_inertia
 
-    def schedule_event(self, delay: float, callback: Callable[['Simulator'], Any], *args, **kwargs):
+    def schedule_event(self, delay: float, callback: Callable[['Simulator'], Any], *args, **kwargs) -> Event:
+        """
+        Schedules an event for execution.
+        :returns: event object, allowing to cancel the event if needed
+        """
         event_time = self.current_time + delay
         event = Event(event_time, callback, *args, **kwargs)
         heapq.heappush(self.event_queue, event)
         self.log(f"Event scheduled for time {event_time}")
+        return event
 
     def run(self):
         self.running = True
@@ -250,6 +260,13 @@ class Node:
         assert (self.channel != None)
         NODE_LOGGER.log(f"Node {self.node_id} broadcast packet: {packet}")
         self.channel.handle_transmission(simulator, packet, self.get_id())
+
+    def broadcast_packet_schedule(self, simulator: Simulator, packet: Packet, delay:float = 0.0):
+        """
+        Schedule broadcasting the packet - so it won't be immediate.
+        """
+        # Remember : simulator is set as first argument by default in callback of schedule_event.
+        simulator.schedule_event(delay, self.broadcast_packet, packet) 
 
     def distance_to(self, other: 'Node') -> float:
         return sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
