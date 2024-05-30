@@ -13,6 +13,12 @@ OUERTANI Mohamed Hachem (omhx21@gmail.com)
 
 Aim : simulate the conditions of the WIP paper.
 
+Assumptions :
+- Nodes have homogenous (speed-wise) internal clocks : all of them have the same tick rate.
+    This is important to handle jitter - can we do better? The code implementation seems to assume we can do that,
+    and the paper assumes we can use it to find ToA and jitter.
+    This also adds another internal variable : record time of reception of the packet.
+
 Note to self :
 - Only a handful of "source" nodes.
 - They are the destination or source of packets, along side the gateways
@@ -50,11 +56,13 @@ class PacketLP(Packet):
     packet_id_counter = 1  # Static variable to the class
 
     class DataLP:
-        def __init__(self, source_id: int, packet_id : int, ack : (bool, int)= (False, -1)):
+        def __init__(self, source_id: int, packet_id : int, timestamp : float, ack : (bool, int)= (False, -1)):
             self.packet_id = packet_id
             self.source_id = source_id
             self.last_in_path = source_id
+            self.before_last_in_path = -1 # TODO : TEMPORARY FIX FOR "FORWARDED PACKET" DETERMINISTIC DETECTION. TO BE FIXED LATER 
             self.ack = ack
+            self.timestamp = self.timestamp # Not noted with the internal variables, but certainly is another one both in packets and nodes.
         
         def __repr__(self) -> str:
             return f'<{type(self)}{{{self.packet_id},{self.source_id},{self.last_in_path},{self.ack}}}>'
@@ -66,7 +74,7 @@ class PacketLP(Packet):
         Re-insisting : "source_id" would be the gateway's ID if the
         gateway is sending a message back to a source.
         """
-        data = self.DataLP(source_id, PacketLP.packet_id_counter, ack)
+        data : self.DataLP = self.DataLP(source_id, PacketLP.packet_id_counter, ack)
         super().__init__(data, source_id)
         PacketLP.packet_id_counter += 1
 
@@ -110,16 +118,20 @@ class NodeLP(Node):
         TODO : different state variables per packet?? Or is this to be used for multiple sources?
         """
 
-        JITTER_MAX_VALUE = 1.0 # Time duration of one jitter interval
+        JITTER_MIN_VALUE = 0.2
+        JITTER_MAX_VALUE = 1.2 # 
         JITTER_INTERVALS = 10 # Number of intervals to divide the jitter to.
+        # This corresponds to [0.2, 0.3], [0.3, 0.4], ... [1.1, 1.2]
         
+        _JITTER_INTERVAL_DURATION = (JITTER_MAX_VALUE - JITTER_MIN_VALUE)/JITTER_INTERVALS # USEFUL TO USE.
+
         def __init__(self, packet_id = -1, source_id = -1, antecessor_id = -1):
             self.packet_id = packet_id # Packet ID.
             self.source_id = source_id # Source ID. 0 for "any gateway", > 0 for a specific source.
             # Jitter adaptation internal state
 
-            self.min_jitter = 0 # MUST BE A NUMBER BETWEEN 0 and JITTER_INTERVALS FOR BOTH MIN AND MAX.
-            self.max_jitter = self.JITTER_INTERVALS
+            self.min_jitter = 0 # MUST BE A NUMBER BETWEEN 0 and min(self.max_jitter,JITTER_INTERVALS)-1
+            self.max_jitter = self.JITTER_INTERVALS # MUST BE A NUMBER max(self.min_jitter,0)+1 and JITTER_INTERVALS
 
             self.reset_jitter() # To keep the implementation self-coherent.
 
@@ -131,6 +143,9 @@ class NodeLP(Node):
 
             # For cancelling event of schedulered transmission or scheduled followup if necessary. It can be thought of as a time internal state variable.
             self.event_handle : Event = None
+
+            # For time-based calculations :
+            self.retransmission_time = None # None if not retransmitted yet, >0 otherwise.
 
         def soft_switch_to(self, packet_id, source_id = False, antecessor_id = False):
             """
@@ -145,13 +160,16 @@ class NodeLP(Node):
             # Reset event handle
             self.event_handle = None
 
+            # Reset retransmission time : new packet, we didn't retransmit it yet
+            self.retransmission_time = None
+
         def get_max_jitter(self) -> float:
-            return self.max_jitter/self.JITTER_INTERVALS * self.JITTER_MAX_VALUE
+            return self.max_jitter/self.JITTER_INTERVALS * (self.JITTER_MAX_VALUE-self.JITTER_MIN_VALUE) + self.JITTER_MIN_VALUE
 
         def get_min_jitter(self) -> float:
-            return self.min_jitter/self.JITTER_INTERVALS * self.JITTER_MAX_VALUE
+            return self.min_jitter/self.JITTER_INTERVALS * (self.JITTER_MAX_VALUE-self.JITTER_MIN_VALUE) + self.JITTER_MIN_VALUE
             
-        def get_jitter(self) -> float:
+        def get_jitter_random(self) -> float:
             """
             Return a random variable between jitter min and jitter max, as per the paper description.
             Though I'm slightly surprised it works this way, instead of updating a jitter value directly, it's kept randomized.
@@ -160,19 +178,67 @@ class NodeLP(Node):
             jitter = random.random() * (self.max_jitter - self.min_jitter) / self.JITTER_INTERVALS * self.JITTER_MAX_VALUE + self.min_jitter / self.JITTER_INTERVALS * self.JITTER_MAX_VALUE # Random jitter
             return jitter
 
+        def get_jitter_average(self) -> float:
+            """
+            Returns the estimated average of the jitter used by this node
+            """
+            jitter = 0.5 * (self.max_jitter - self.min_jitter) / self.JITTER_INTERVALS * self.JITTER_MAX_VALUE + self.min_jitter / self.JITTER_INTERVALS * self.JITTER_MAX_VALUE # Random jitter
+            return jitter
+
+        def set_jitter_interval_around(self, jitter):
+            """ Sets jitter to a narrow interval around the given value. """
+            assert jitter >= self.JITTER_MIN_VALUE and jitter <= self.JITTER_MAX_VALUE, "Jitter set outside of allowed values"
+            jitter_min_index = int(math.floor((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
+            jitter_max_index = int(math.ceil((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
+            self.min_jitter = jitter_min_index
+            self.max_jitter = jitter_max_index
+
+        def clip_jitter(self, jitter):
+            """ Returns a cliped jitter in the appropriate interval """
+            return max(self.JITTER_MIN_VALUE, min(self.JITTER_MAX_VALUE, jitter))
+
         def reduce_jitter(self):
-            pass
-        
+            """
+            Decreases jitter interval indexes of both min and max by 1
+            """
+            self.min_jitter = max(0, self.min_jitter - 1)
+            self.max_jitter = max(self.min_jitter, self.max_jitter - 1)
+
+        def increase_jitter(self):
+            """
+            Increases jitter interval indexes of both min and max by 1
+            """
+            self.min_jitter = max(0, self.min_jitter - 1)
+            self.max_jitter = max(self.min_jitter, self.max_jitter - 1)
+            
+
         def adapt_jitter(self):
             pass
 
-        def increase_jitter(self):
-            pass
+        def minimize_jitter_interval(self):
+            """ Makes it so that the jitter interval is set to the smallest possible interval around the average value. """
+            self.set_jitter_interval_around(self.clip_jitter(self.get_jitter_average()))
 
         def reset_jitter(self):
-            self.min_jitter = 0
-            self.max_jitter = self.JITTER_INTERVALS
+            """
+            Makes jitter random over the full range.
+            This is different from having an assigned jitter interval.
+            """
+            self.min_jitter = 0 # MUST BE A NUMBER BETWEEN 0 and min(self.max_jitter,JITTER_INTERVALS)-1
+            self.max_jitter = self.JITTER_INTERVALS # MUST BE A NUMBER max(self.min_jitter,0)+1 and JITTER_INTERVALS
 
+    def estimate_jitter_of_next_forwarding_node_within_channel(self, simulator: 'Simulator', channel: 'Channel', window_id_index : int , packet: 'PacketLP'):
+        """
+        Attempts to estimate the jitter of the node from which the packet was received, assuming the node transmitted the packet and heard back its echo
+        This unfortunately relies on a functional internal clock within each device. We'll assume it is the case, and cheat using Simulator's time.
+        Here we also cheat by asking the channel how long it takes to get to said node.
+        TODO: Fix this cheaty case?
+        """
+        assert self.last_packets_treated[window_id_index] != -1, "Unexpected error, problem in the code implementation"
+        
+        twottimestimeofarrivalplusjitter = simulator.get_current_time() - self.last_packets_treated[window_id_index].retransmission_time
+        channelestimatedtimeofarrival = channel.get_distance(self.get_id(), packet.data.last_in_path)
+        return twottimestimeofarrivalplusjitter - 2 * channelestimatedtimeofarrival
 
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
         super().__init__(x, y, channel)
@@ -227,11 +293,13 @@ class NodeLP(Node):
                 # Assign the packet to the first slot
                 packet_id_index = self.last_packets_treated.index(-1) # If error arises, it shouldn't. So there is a problem with the code.
                 self.last_packets_treated[packet_id_index] = packet_id_index
+
                 # Here it is a soft switch : keep all the jitter and suppression configurations as they are.
                 self.last_packets_informations[packet_id_index].soft_switch_to(packet_id=packet_id, source_id=packet.get_source_id(), antecessor_id=packet.get_antecessor_id())
                 self.remaining_capacity -= 1
                 return (True, packet_id_index)
-                # Different jitter per packet in packet capacity? TODO TBS + assign packet depending on source in the list.
+
+                # Different jitter per packet in packet capacity? TODO : TBS + assign packet depending on source in the list.
         else:
             return (True, packet_id_index)
     
@@ -244,10 +312,14 @@ class NodeLP(Node):
         if self.last_packets_treated[window_id_index] != -1: 
             self.remaining_capacity += 1
             self.last_packets_treated[window_id_index] = 1
-        
-
 
     def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
+        """
+        First entry point when processing a packet fully received by the node.
+
+        If possible, it'll treat it within the appropriate finite state that corresponds to it.
+        """
+
         # First : is packet in list of being_treated_packets ?
         packet_id = packet.get_id()
         packet_id_index = self.get_packet_window_index(packet)
@@ -288,11 +360,20 @@ class NodeLP(Node):
             self.last_packets_informations[packet_id_index].number_of_heard_retransmissions_of_last_received += 1
             # TODO : doesn't treat ACKs when doing this? For now I don't verify if it's an Ack or not : if we are last_in_path, validate in all cases.
 
-            if packet.data.last_in_path == self.get_id():
-                # Forward Delay Adaptation
-                self.last_packets_informations[packet_id_index].adapt_jitter() # TODO : properly treat this.
-
-            pass
+            if packet.data.before_last_in_path == self.get_id():
+                # Hear a forward retransmission? Treat it here
+                # Acknowledgement based delay reduction  
+                if packet.data.ack:
+                    # TODO : Overwrite current state and focus on forwarding the ack?? Not clear, because it means the last_in_path was a gateway.
+                    self.last_packets_informations[packet_id_index].reduce_jitter() # DIVIDE BY 2 ?
+                else:
+                    # Forward Delay Adaptation
+                    self.last_packets_informations[packet_id_index].adapt_jitter() # TODO : properly treat this.
+            else:
+                # Hear a retransmission of said packet but by someone else? Treat it here.
+                # For now, until we understand better how to treat packet retransmissions, just pass.
+                pass
+                
 
         elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.DONE:
             raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
@@ -363,8 +444,9 @@ class NodeLP(Node):
         This introduces more time delays.
         ABOLUTE TODO : Estimate order of magnitude for EVERY impactful parameter.
         """
+        packet.data.before_last_in_path = packet.data.last_in_path # Set the before-last-in-path.
         packet.data.last_in_path = self.get_id()  # Set last-in-path
-        self.broadcast_packet(simulator, packet)
+        self.broadcast_packet(simulator, packet) # Broadcast the packet.
 
 
 class GatewayLP(NodeLP):

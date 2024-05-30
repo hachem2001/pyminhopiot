@@ -70,6 +70,10 @@ class Simulator:
         # How long to sleep before every event execution.
         self.simulations_real_inertia = simulations_real_inertia
 
+    def get_current_time(self):
+        """ Returns current time. Similar to NS3's Simulator::NOW()  """
+        return self.current_time
+ 
     def schedule_event(self, delay: float, callback: Callable[['Simulator'], Any], *args, **kwargs) -> Event:
         """
         Schedules an event for execution.
@@ -191,6 +195,23 @@ class Channel:
                     return True
 
         return False
+    
+    def _get_link_list_index(self, node_id_1: int, node_id_2: int) -> int:
+        """
+        Internal function useful for returning the index in self.adjacencies_per_node of node_id_1 where we find node_id_2.
+        Returns -1 if it doesn't exist.
+        """
+        id_to_return = -1
+        for (id_, delay) in self.adjacencies_per_node[node_id_1]:
+            if id_ == node_id_2:
+                id_to_return = id_
+        return id_to_return
+
+    def get_distance(self, node_id_1: int, node_id_2: int):
+        """ Returns the distance for node_id_1 -> node_id_2 if it exists. """
+        assert(self.cheeck_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
+        id_in_list_of_node_2 = self._get_link_list_index(node_id_1, node_id_2)
+        return self.adjacencies_per_node[node_id_1][id_in_list_of_node_2][1]
 
     def create_metric_mesh(self, distance_threshold: float, *args: 'Node'):
         """
