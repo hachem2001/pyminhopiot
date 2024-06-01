@@ -1,5 +1,6 @@
 import heapq
 import time
+from io import StringIO
 from math import sqrt
 from typing import Callable, Any, Dict, List
 
@@ -19,12 +20,36 @@ This is naturally not representative of the real world
 from packet import Packet
 from logger import Logger
 
+NONE_LOGGER = Logger("none", verbose=False)
 EVENT_LOGGER = Logger("event", verbose=False)
 GATEWAY_LOGGER = Logger("gateway", verbose=False)
 NODE_LOGGER = Logger("node", verbose=False)
 SIMULATOR_LOGGER = Logger("simulator", verbose=False)
 SOURCE_LOGGER = Logger("source", verbose=False)
 CHANNEL_LOGGER = Logger("channel", verbose=True)
+
+class Loggable:
+    """ An object that ships with a logging unit. Useful for logging what is happening (event callbacks etc ...) """
+
+    def __init__(self, logger=NONE_LOGGER, preamble='', active=True, verbose_overwrite=True):
+        """
+        :logger: Logger object associated
+        :preamble: Preamble to prepend to every logged message
+        :active: Whether the act of saving logs to the logs table of the logger object is enabled.
+        :verbose: Whether this log is verbose or not.
+        """
+        self._logger = logger
+        self._logger_preamble = preamble
+        self._logger_active = active
+        self._logger_verbose_overwrite = verbose_overwrite
+
+    def _log(self, *args, end='', verbose_overwrite = True, **kwargs):
+        """ Adds message to log. """
+        if self._logger_active:
+            output = StringIO()
+            print(*args, file=output, end=end, **kwargs)
+            self._logger.log(f"{self._logger_preamble}"+output.getvalue(), verbose_overwrite and self._logger_verbose_overwrite)
+
 
 
 class Event:
@@ -51,7 +76,6 @@ class Event:
     
     def cancel(self):
         self.effective = False
-
 
 class Simulator:
     def __init__(self, simulation_length: float = 10.0, simulations_real_inertia: float = 0.01):
@@ -120,7 +144,6 @@ class Simulator:
 
     def send_packet(self, packet: Packet, current_node: 'Node'):
         current_node.receive_packet(self, packet)
-
 
 class Channel:
     def __init__(self):
@@ -241,11 +264,11 @@ class Channel:
             CHANNEL_LOGGER.log(
                 f"channel registered packet from {sender_id} to {node_id}")
 
-
-class Node:
+class Node(Loggable):
     next_id = 1
 
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
+        super(Loggable, self).__init__(NODE_LOGGER, str(Node.next_id)+" - ")
         self.node_id = Node.next_id
         Node.next_id += 1
         self.x = x
@@ -264,7 +287,7 @@ class Node:
         Registers receiving a packet, then processing it. Call back used
         by channels.
         """
-        NODE_LOGGER.log(f"Node {self.node_id} received packet: {packet}")
+        self._log(f"received packet: {packet}")
         self.process_packet(simulator, packet)
 
     def process_packet(self, simulator: 'Simulator', packet: 'Packer'):
@@ -279,7 +302,7 @@ class Node:
         Broadcast packet through channel. 
         """
         assert (self.channel != None)
-        NODE_LOGGER.log(f"Node {self.node_id} broadcast packet: {packet}")
+        self._log(f"broadcast packet: {packet}")
         self.channel.handle_transmission(simulator, packet, self.get_id())
 
     def broadcast_packet_schedule(self, simulator: Simulator, packet: Packet, delay:float = 0.0):
@@ -294,6 +317,7 @@ class Node:
 
 
 class Gateway(Node):
+    def __init_subclass__
     def process_packet(self, simulator: Simulator, packet: Packet):
         GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
         # Gateways can also process packets like regular nodes if needed

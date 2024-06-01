@@ -5,7 +5,7 @@ random.seed(1)
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
 GATEWAY_LOGGER.set_verbose(True)
-NODE_LOGGER.set_verbose(False)
+NODE_LOGGER.set_verbose(True)
 SIMULATOR_LOGGER.set_verbose(False)
 SOURCE_LOGGER.set_verbose(True)
 CHANNEL_LOGGER.set_verbose(False)
