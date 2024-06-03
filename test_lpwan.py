@@ -11,14 +11,14 @@ SOURCE_LOGGER.set_verbose(True)
 CHANNEL_LOGGER.set_verbose(False)
 
 # Example usage:
-sim = Simulator(10, 0.1)
+sim = Simulator(100, 0.01)
 
 # Create nodes with coordinates
 gateway = GatewayLP(0, 0)
 node2 = NodeLP(5, 0)
 node3 = NodeLP(10, 0)
 node4 = NodeLP(15, 0)
-source = SourceLP(20, 0, 200000)
+source = SourceLP(20, 0, 10)
 
 gateway.set_logger_active(True)
 node2.set_logger_active(True)

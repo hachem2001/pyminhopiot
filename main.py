@@ -118,14 +118,17 @@ class Simulator:
         while self.event_queue and self.running:
             event = heapq.heappop(self.event_queue)
             assert event.time >= self.current_time, "Event scheduled in the past, not possible"
-            time.sleep(self.simulations_real_inertia * (event.time - self.current_time))
+            time.sleep(self.simulations_real_inertia * ((self.simulation_length > 0.0 and min(event.time, self.simulation_length) or event.time) - self.current_time))
             self.current_time = event.time # MUST SET BEFORE EXECUTING THE EVENT
-            self.log(f"Executing event at time {self.current_time}")
-            event.execute(self)
-            # ^ Simulate some delay for each event execution
+            
             if self.simulation_length > 0.0 and \
                     self.current_time > self.simulation_length:
                 self.running = False
+                break
+
+            self.log(f"Executing event at time {self.current_time}")
+            event.execute(self)
+            # ^ Simulate some delay for each event execution
 
     def stop(self):
         """
