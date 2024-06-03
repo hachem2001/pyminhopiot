@@ -6,6 +6,7 @@ from typing import Any, Tuple
 from enum import Enum, auto
 
 import random
+import math
 
 """
 
@@ -52,28 +53,27 @@ class PacketLP(Packet):
             - whether it is an ACK or not (and which packet_id it acks if so.)
             The last_in_path
     """
-
     packet_id_counter = 1  # Static variable to the class
 
     class DataLP:
-        def __init__(self, source_id: int, packet_id : int, ack : (bool, int)= (False, -1)):
+        def __init__(self, source_id: int, packet_id : int, ack : (bool, int)= (False, -1), before_last_in_path = -1):
             self.packet_id = packet_id
             self.source_id = source_id
             self.last_in_path = source_id
-            self.before_last_in_path = -1 # TODO : TEMPORARY FIX FOR "FORWARDED PACKET" DETERMINISTIC DETECTION. TO BE FIXED LATER 
+            self.before_last_in_path = before_last_in_path # TODO : TEMPORARY FIX FOR "FORWARDED PACKET" DETERMINISTIC DETECTION. TO BE FIXED LATER 
             self.ack = ack
         
         def __repr__(self) -> str:
-            return f'<{type(self)}{{{self.packet_id},{self.source_id},{self.last_in_path},{self.ack}}}>'
+            return f'<{type(self)}{{{self.packet_id},{self.source_id},{self.last_in_path},{self.before_last_in_path},{self.ack}}}>'
         
 
 
-    def __init__(self, source_id: int, ack : (bool, int)= (False, -1)):
+    def __init__(self, source_id: int, ack : (bool, int)= (False, -1), before_last_in_path = -1):
         """
         Re-insisting : "source_id" would be the gateway's ID if the
         gateway is sending a message back to a source.
         """
-        data : self.DataLP = self.DataLP(source_id, PacketLP.packet_id_counter, ack)
+        data : self.DataLP = self.DataLP(source_id, PacketLP.packet_id_counter, ack, before_last_in_path)
         super().__init__(data, source_id)
         PacketLP.packet_id_counter += 1
 
@@ -132,19 +132,25 @@ class NodeLP(Node):
 
         FOLLOWUP_PENDING_DONE_TIMEOUT = 2 * JITTER_MAX_VALUE # As used in the previous code.
 
-        def __init__(self, packet_id = -1, source_id = -1, antecessor_id = -1):
-            self.packet_id = packet_id # Packet ID.
-            self.source_id = source_id # Source ID. 0 for "any gateway", > 0 for a specific source.
-            # Jitter adaptation internal state
+        def __init__(self, packet_message_id = -1, source_id = -1, antecessor_id = -1, packet_id = -1):
+            """
+            :packet_message_id: Packet Message ID (same one for M or ack of M).
+            :packet_id: Packet ID (M and ack of M don't have same ID).
+            :source_id: 0 for "any gateway", > 0 for a specific source
+            """
+            self.packet_message_id = packet_message_id 
+            self.packet_id = packet_id
+            self.source_id = source_id
 
+            # Jitter adaptation internal state
             self.min_jitter = 0 # MUST BE A NUMBER BETWEEN 0 and min(self.max_jitter,JITTER_INTERVALS)-1
             self.max_jitter = self.JITTER_INTERVALS # MUST BE A NUMBER max(self.min_jitter,0)+1 and JITTER_INTERVALS
 
             self.reset_jitter() # To keep the implementation self-coherent.
 
             self.id_node_antecessor_of_last_packet_forwarded = antecessor_id
-            # Overhead suppression internal state
 
+            # Overhead suppression internal state
             self.neighbours_noted = set() # Number of recorded neighbours is in here.
 
             self.probability_of_forwarding = 1.0 # between 0.0 and 1.0
@@ -156,11 +162,13 @@ class NodeLP(Node):
             # For time-based calculations :
             self.retransmission_time = None # None if not retransmitted yet, >0 otherwise.
 
-        def soft_switch_to(self, packet_id, source_id = False, antecessor_id = False):
+        def soft_switch_to(self, packet_message_id, packet_id, source_id = False, antecessor_id = False):
             """
             Keeps the jitter parameters, and merely changes the IDs treated by the jitter parameter
             """
             self.packet_id = packet_id
+            self.packet_message_id = packet_message_id
+
             if source_id != False:
                 self.source_id = source_id
             if antecessor_id != False:
@@ -205,6 +213,7 @@ class NodeLP(Node):
 
         def set_jitter_interval_around(self, jitter):
             """ Sets jitter to a narrow interval around the given value. """
+            # TODO : clip jitter instead
             assert jitter >= self.JITTER_MIN_VALUE and jitter <= self.JITTER_MAX_VALUE, "Jitter set outside of allowed values"
             jitter_min_index = int(math.floor((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
             jitter_max_index = int(math.ceil((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
@@ -262,8 +271,8 @@ class NodeLP(Node):
         """
         assert self.last_packets_treated[window_id_index] != -1, "Unexpected error, problem in the code implementation"
         
-        twottimestimeofarrivalplusjitter = simulator.get_current_time() - self.last_packets_treated[window_id_index].retransmission_time
-        channelestimatedtimeofarrival = channel.get_distance(self.get_id(), packet.data.last_in_path)
+        twottimestimeofarrivalplusjitter = simulator.get_current_time() - self.last_packets_informations[window_id_index].retransmission_time
+        channelestimatedtimeofarrival = channel.get_time_delay(self.get_id(), packet.data.last_in_path)
         return twottimestimeofarrivalplusjitter - 2 * channelestimatedtimeofarrival
 
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
@@ -281,15 +290,26 @@ class NodeLP(Node):
         # Keeps track of how many more packets can be treated further.
         self.remaining_capacity = NodeLP.PACKETS_STATE_CAPACITY
 
+    def get_packet_message_id(self, packet:'PacketLP'):
+        """
+        A packet ID changes when the content of the message is not different.
+        Say, an ack to a message M does not have the same ID as M.
+        This function returns the message ID.
+        Meaning, for a packet M, if it's a message it returns its ID, if it's an ACK to M it returns the same ID as M.
+        """
+        packet_id = packet.data.ack != False and packet.data.ack[1] or packet.get_id()
+        return packet_id
+
     def get_packet_window_index(self, packet:'PacketLP'):
         """
         If the packet is part of the node's processing, it will return the appropriate index
         Otherwise, it will return -1
         """
-        packet_id = packet.get_id()
+        packet_id = self.get_packet_message_id(packet)
         packet_id_index = -1
 
         try:
+            
             packet_id_index = self.last_packets_treated.index(packet_id)
         except ValueError:
             packet_id_index = -1
@@ -303,9 +323,8 @@ class NodeLP(Node):
         Else, it will return (False, -1)
         :returns: (Whether the packet has a dedicated window or not, packet_id if assigned, otherwise -1)
         """
-        packet_id = packet.get_id()
+        packet_id = self.get_packet_message_id(packet)
         packet_id_index = self.get_packet_window_index(packet)
-        self.logger_log("DEBUG : capacity, ", self.remaining_capacity)
         if packet_id_index == -1:
             if self.remaining_capacity <= 0:
                 # Three possibilities : 
@@ -321,7 +340,7 @@ class NodeLP(Node):
                 self.last_packets_treated[packet_id_index] = packet_id
 
                 # Here it is a soft switch : keep all the jitter and suppression configurations as they are.
-                self.last_packets_informations[packet_id_index].soft_switch_to(packet_id=packet_id, source_id=packet.get_source_id(), antecessor_id=packet.get_antecessor_id())
+                self.last_packets_informations[packet_id_index].soft_switch_to(packet_message_id=packet_id, packet_id=packet.get_id(), source_id=packet.get_source_id(), antecessor_id=packet.get_antecessor_id())
                 self.remaining_capacity -= 1
                 return (True, packet_id_index)
 
@@ -337,7 +356,7 @@ class NodeLP(Node):
         assert(window_id_index>=0 and window_id_index<self.PACKETS_STATE_CAPACITY)
         if self.last_packets_treated[window_id_index] != -1: 
             self.remaining_capacity += 1
-            self.last_packets_treated[window_id_index] = 1
+            self.last_packets_treated[window_id_index] = -1
 
     def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
         """
@@ -347,7 +366,7 @@ class NodeLP(Node):
         """
 
         # First : is packet in list of being_treated_packets ?
-        packet_id = packet.get_id()
+        packet_id = self.get_packet_message_id(packet)
         packet_id_index = self.get_packet_window_index(packet)
         register_result = self.packet_window_register(packet)
         packet_id_index = register_result[1]
@@ -358,7 +377,7 @@ class NodeLP(Node):
 
         # Packet is assigned somewhere with packet_id_index in our list of packet ids that we can treat.
         internal_state = self.last_packets_informations[packet_id_index]
-        
+        self._log("state when received : ", internal_state.internal_state_for_packet)
         # Increase neighbour count !
         if packet.data.last_in_path != self.get_id():
             self.last_packets_informations[packet_id_index].register_neighbour(packet.data.last_in_path)
@@ -384,8 +403,8 @@ class NodeLP(Node):
             # If we hear a packet that is forwarding our message (last_in_path is this node) : move to Done.
             if packet.data.before_last_in_path == self.get_id():
                 # Hear a forward retransmission? Treat it here
-                # Acknowledgement based delay reduction  
-                if packet.data.ack:
+                # Acknowledgement based delay reduction : an ACK recevied DIRECTLY FROM A GATEWAY (previous message in internal state was not an ACK)
+                if packet.data.ack and internal_state.packet_id != packet.get_id():
                     # TODO : Overwrite current state and focus on forwarding the ack?? Not clear - opted FOR, for now.
                     self.last_packets_informations[packet_id_index].half_reduce_jitter_with_minimize()
 
@@ -421,7 +440,6 @@ class NodeLP(Node):
         Schedulable immediate transmission. It checks current state, but its aim is to initite immediate transmission
         TODO : If the transmission takes time, the node would no longer be able to receive packets, and collision can happen etc etc.
         """
-        self.logger_log(packet)
         packet_id_index = self.get_packet_window_index(packet)
 
         if packet_id_index == -1:
@@ -441,7 +459,9 @@ class NodeLP(Node):
             random_decisive_variable = random.random()
             if random_decisive_variable < internal_state.probability_of_forwarding:
                 # Forward packet, and go to followup state.
+                self.last_packets_informations[packet_id_index].retransmission_time = simulator.get_current_time()
                 self.transmit_packet_lp_effective(simulator, packet)
+                # And go to follow-up-state, as well as set its appropriate triggers
                 self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.FOLLOWUP_PENDING
                 event = simulator.schedule_event(self.JitterSuppressionState.FOLLOWUP_PENDING_DONE_TIMEOUT, self.end_of_followup_pending_schedulable, packet, any_type_of_followup_received=False)
                 self.last_packets_informations[packet_id_index].event_handle = event
@@ -457,7 +477,6 @@ class NodeLP(Node):
         elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.DONE:
             raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
         
-
     def end_of_followup_pending_schedulable(self, simulator: 'Simulator', packet: 'PacketLP', any_type_of_followup_received:bool = False):
         """
         Schedules timeout of followup-pending.
@@ -490,15 +509,22 @@ class NodeLP(Node):
         packet.data.last_in_path = self.get_id()  # Set last-in-path
         self.broadcast_packet(simulator, packet) # Broadcast the packet.
 
-
 class GatewayLP(NodeLP):
+
+    def __init__(self, x: float, y: float, channel: 'Channel' = None ):
+        super().__init__(x, y, channel)
+        super(Node, self).__init__(logger=GATEWAY_LOGGER, preamble=str(self.node_id)+" - ")
+
     def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
         """
         Processing of packets reaching the gateway.
         Invokes a send_ack
         """
-        GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
-        self.send_ack(simulator, packet)
+        # GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
+        # Schedule ACK message
+        # NOTE : Here it is not scheduled but immediate ...
+        if not packet.data.ack:
+            self.send_ack(simulator, packet)
 
     def send_ack(self, simulator: 'Simulator', in_packet: 'PacketLP'):
         """
@@ -506,27 +532,37 @@ class GatewayLP(NodeLP):
         Invokes the corresponding broadcast_packet
         :in_packet: Packet received for which an ACK will be created
         """
-        ack_packet = PacketLP(self.get_id(), ack=(True, in_packet.get_id()))
+        # Source ID set to 0 because gateway.
+        ack_packet = PacketLP(0, ack=(True, in_packet.get_id()), before_last_in_path=in_packet.data.last_in_path)
         self.broadcast_packet(simulator, ack_packet)
 
 class SourceLP(NodeLP):
+
+    def __init__(self, x: float, y: float, interval: float, channel: 'Channel' = None ):
+        """
+        :interval: Interval between each message retransmission
+        """
+        super().__init__(x, y, channel)
+        super(Node, self).__init__(logger=SOURCE_LOGGER, preamble=str(self.node_id)+" - ")
+        self.interval = interval
+
     def start_sending(self, simulator: Simulator):
         self.send_packet(simulator)
 
         # UNCOMMENT FOR PERIODIC SENDING
 
-        # simulator.schedule_event(self.interval, self.start_sending)
+        simulator.schedule_event(self.interval, self.start_sending)
         # Don't add simulator as arg, added by default.
 
     def process_packet(self, simulator: Simulator, packet: PacketLP):
         # Drop packets.
         
         if packet.data.ack:
-            SOURCE_LOGGER.log(f"Source {self.node_id} received ack for packet_id: {packet.data.ack[1]}, packet: {packet}")
+            self._log(f"received ack for packet_id: {packet.data.ack[1]}, packet: {packet}")
 
         return
 
     def send_packet(self, simulator: Simulator):
         packet = PacketLP(self.get_id(), False)
-        SOURCE_LOGGER.log(f"Source {self.node_id} sending packet: {packet}")
+        self._log(f"sending packet: {packet}")
         self.broadcast_packet(simulator, packet)

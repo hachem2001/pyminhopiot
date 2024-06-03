@@ -50,7 +50,11 @@ class Loggable:
             print(*args, file=output, end=end, **kwargs)
             self._logger.log(f"{self._logger_preamble}"+output.getvalue(), verbose_overwrite and self._logger_verbose_overwrite)
 
+    def set_logger_active(self, active:bool):
+        self._logger_active = active
 
+    def set_logger_verbose_overwrite(self, verbose_overwrite:bool):
+        self._logger_verbose_overwrite = verbose_overwrite
 
 class Event:
     def __init__(self, time: float, callback: Callable[['Simulator'], Any], *args, **kwargs):
@@ -83,7 +87,7 @@ class Simulator:
         Simulator, to which pertains events.
         Holds an internal clock, and events get executed linearly in it.
         :simulation_length: How many time units corresponding to events will be treated.
-        :simulations_real_inertia: How many (float) seconds to wait between each event execution
+        :simulations_real_inertia: How long (float) 1 simulation second corresponds to real execution time
         """
         assert (simulations_real_inertia >= 0.0)
         self.current_time = 0.0
@@ -113,10 +117,11 @@ class Simulator:
         self.running = True
         while self.event_queue and self.running:
             event = heapq.heappop(self.event_queue)
-            self.current_time = event.time
+            assert event.time >= self.current_time, "Event scheduled in the past, not possible"
+            time.sleep(self.simulations_real_inertia * (event.time - self.current_time))
+            self.current_time = event.time # MUST SET BEFORE EXECUTING THE EVENT
             self.log(f"Executing event at time {self.current_time}")
             event.execute(self)
-            time.sleep(self.simulations_real_inertia)
             # ^ Simulate some delay for each event execution
             if self.simulation_length > 0.0 and \
                     self.current_time > self.simulation_length:
@@ -146,7 +151,7 @@ class Simulator:
         current_node.receive_packet(self, packet)
 
 class Channel:
-    def __init__(self):
+    def __init__(self, packet_delay_per_unit=0.1):
         """
         Each node will be registered with it's identifier.
         Would be in self.assigned_nodes (dict of node_id to Node)
@@ -156,10 +161,12 @@ class Channel:
 
         A matrix would have been nice, but this would do.
         It's a graph structure either way.
+        :packet_delay_per_unit: by default transmissions here are 0.01 second per time unit.
         """
 
         self.assigned_nodes = {}
         self.adjacencies_per_node = {}
+        self.packet_delay_per_distance_unit = packet_delay_per_unit
 
     def assign_node(self, node: 'Node'):
         self.assigned_nodes[node.get_id()] = node  # Reference.
@@ -205,7 +212,7 @@ class Channel:
         if unidirectional : only node_id_1 -> node_id_2 
         """
         return_value = False
-        for (id_, delay) in self.adjacencies_per_node[node_id_1]:
+        for (id_, distance) in self.adjacencies_per_node[node_id_1]:
             if id_ == node_id_2:
                 return_value = True
 
@@ -213,11 +220,11 @@ class Channel:
             return False
 
         if not unidirectional:
-            for (id_, delay) in self.adjacencies_per_node[node_id_2]:
+            for (id_, distance) in self.adjacencies_per_node[node_id_2]:
                 if id_ == node_id_1:
                     return True
 
-        return False
+        return return_value
     
     def _get_link_list_index(self, node_id_1: int, node_id_2: int) -> int:
         """
@@ -225,16 +232,22 @@ class Channel:
         Returns -1 if it doesn't exist.
         """
         id_to_return = -1
-        for (id_, delay) in self.adjacencies_per_node[node_id_1]:
+
+        for i in range(len(self.adjacencies_per_node[node_id_1])):
+            (id_, distance) = self.adjacencies_per_node[node_id_1][i]
             if id_ == node_id_2:
-                id_to_return = id_
+                id_to_return = i
         return id_to_return
 
     def get_distance(self, node_id_1: int, node_id_2: int):
         """ Returns the distance for node_id_1 -> node_id_2 if it exists. """
-        assert(self.cheeck_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
+        assert(self.check_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
         id_in_list_of_node_2 = self._get_link_list_index(node_id_1, node_id_2)
         return self.adjacencies_per_node[node_id_1][id_in_list_of_node_2][1]
+
+    def get_time_delay(self, node_id_1: int, node_id_2: int):
+        """ Returns the time delay for node_id_1 -> node_id_2 if it exists. """
+        return self.packet_delay_per_distance_unit * self.get_distance(node_id_1, node_id_2)
 
     def create_metric_mesh(self, distance_threshold: float, *args: 'Node'):
         """
@@ -256,9 +269,10 @@ class Channel:
                             packet: 'Packet', sender_id: int):
         """ As the name implies. It creates the appropriate events. """
         # Send packet to all adjacent points
-        for (node_id, delay) in self.adjacencies_per_node[sender_id]:
+        for (node_id, distance) in self.adjacencies_per_node[sender_id]:
             new_packet = packet.forward(sender_id)
             new_packet.add_to_path(node_id)  # Add ID of receiver to its path.
+            delay = distance * self.packet_delay_per_distance_unit
             simulator.schedule_event(delay,
                                      self.assigned_nodes[node_id].receive_packet, new_packet)
             CHANNEL_LOGGER.log(
@@ -268,7 +282,7 @@ class Node(Loggable):
     next_id = 1
 
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
-        super(Loggable, self).__init__(NODE_LOGGER, str(Node.next_id)+" - ")
+        super(Node, self).__init__(logger=NODE_LOGGER, preamble=str(Node.next_id)+" - ")
         self.node_id = Node.next_id
         Node.next_id += 1
         self.x = x
@@ -315,18 +329,20 @@ class Node(Loggable):
     def distance_to(self, other: 'Node') -> float:
         return sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
 
-
 class Gateway(Node):
-    def __init_subclass__
+    def __init__(self, x: float, y: float, channel: 'Channel' = None):
+        super(Gateway, self).__init__(x, y, channel)
+        super(Node, self).__init__(logger=GATEWAY_LOGGER, preamble=str(Node.next_id)+" - ")
+
     def process_packet(self, simulator: Simulator, packet: Packet):
-        GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
+        self._log(f"captured packet: {packet}")
         # Gateways can also process packets like regular nodes if needed
         # self.process_packet(simulator, packet)
 
-
 class Source(Node):
-    def __init__(self, x: float, y: float, interval: float):
-        super().__init__(x, y)
+    def __init__(self, x: float, y: float, interval: float, channel: 'Channel' = None):
+        super().__init__(x, y, channel)
+        super(Node, self).__init__(logger=SOURCE_LOGGER, preamble=str(self.node_id)+" - ")
         self.interval = interval
 
     def start_sending(self, simulator: Simulator):
@@ -336,5 +352,5 @@ class Source(Node):
 
     def send_packet(self, simulator: Simulator):
         packet = Packet(data="Hello", source_id=self.node_id)
-        SOURCE_LOGGER.log(f"Source {self.node_id} sending packet: {packet}")
+        self._log(f"sending packet: {packet}")
         self.broadcast_packet(simulator, packet)

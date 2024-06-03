@@ -3,10 +3,10 @@ from main import *
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
 GATEWAY_LOGGER.set_verbose(True)
-NODE_LOGGER.set_verbose(False)
+NODE_LOGGER.set_verbose(True)
 SIMULATOR_LOGGER.set_verbose(False)
 SOURCE_LOGGER.set_verbose(False)
-CHANNEL_LOGGER.set_verbose(True)
+CHANNEL_LOGGER.set_verbose(False)
 
 # Example usage:
 sim = Simulator(20, 0.01)
