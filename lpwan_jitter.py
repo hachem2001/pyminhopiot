@@ -100,6 +100,8 @@ class NodeLP(Node):
 
     RETRANSMIT_BACK_ACKS = False # If we try to send the Ack back to source.
 
+    DISSALLOW_MULTIPLE_RETRANSMISSIONS = True # If the same packet_id can be reassigned to the same window as before. can happen in some "ping pong" situations
+
     class NodeLP_PACKET_State(Enum):
         """
         The various internam finite state machine states described in the paper
@@ -142,7 +144,7 @@ class NodeLP(Node):
 
         # Suppression default values
         SUPPRESSION_AGGRESSIVE_PROBABILITY = 0.2 # p_min as described in the paper
-        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.CONSERVATIVE
+        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.REGULAR
 
         def __init__(self, packet_message_id = -1, source_id = -1, antecessor_id = -1, packet_id = -1):
             """
@@ -383,6 +385,7 @@ class NodeLP(Node):
         """
         packet_id = self.get_packet_message_id(packet)
         packet_id_index = self.get_packet_window_index(packet)
+
         if packet_id_index == -1:
             if self.remaining_capacity <= 0:
                 # Three possibilities : 
@@ -393,8 +396,15 @@ class NodeLP(Node):
                 # Not Opted Yet : TODO
                 return (False, -1)
             else:
+
                 # Assign the packet to the first slot
                 packet_id_index = self.last_packets_treated.index(-1) # If error arises, it shouldn't. So there is a problem with the code.
+
+                if NodeLP.DISSALLOW_MULTIPLE_RETRANSMISSIONS:
+                        # To disallow "PING-PONG situations". TODO : be careful about packet_message_id and packet_id
+                        if self.last_packets_informations[packet_id_index].packet_message_id == packet_id:
+                            return (False, packet_id_index)
+
                 self.last_packets_treated[packet_id_index] = packet_id
 
                 # Here it is a soft switch : keep all the jitter and suppression configurations as they are.

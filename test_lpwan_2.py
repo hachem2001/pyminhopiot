@@ -11,7 +11,7 @@ EVENT_LOGGER.set_verbose(False)
 GATEWAY_LOGGER.set_verbose(True)
 NODE_LOGGER.set_verbose(False)
 SIMULATOR_LOGGER.set_verbose(False)
-SOURCE_LOGGER.set_verbose(True)
+SOURCE_LOGGER.set_verbose(False)
 CHANNEL_LOGGER.set_verbose(False)
 
 def node_cluster_around(x, y, number, radius):
@@ -27,38 +27,38 @@ def node_cluster_around(x, y, number, radius):
 CHANNEL_HEARING_RADIUS = 10.0
 inter_cluster_distance = 8.0
 intra_cluster_distance = 3.0
-cluster_number = 3
-number_of_clusters = 3
+cluster_number = 20
+number_of_clusters = 20
 final_distance = 0
 start_x = 0.0
 start_y = 0.0
 
 nodes = []
-source = SourceLP(start_x, start_y, 300)
+source = SourceLP(start_x - inter_cluster_distance, start_y, 50)
 nodes.append(source)
 
 for i in range(number_of_clusters):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add = node_cluster_around(start_x + inter_cluster_distance*i, start_y, cluster_number, intra_cluster_distance)
     
-    # for i in range(1, len(nodes_to_add) - 1):
-    #    pass # nodes_to_add[i].set_logger_active(False)
+    for j in range(0, len(nodes_to_add)-1):
+        nodes_to_add[j].set_logger_active(True)
     
-    nodes.extend(node_cluster_around(start_x + inter_cluster_distance*i, start_y, cluster_number, intra_cluster_distance))
+    nodes.extend(nodes_to_add)
 end_x = start_x + inter_cluster_distance * number_of_clusters
 end_y = 0
 
 nodes.append(GatewayLP(end_x, end_y))
 
 # Example usage:
-sim = Simulator(10000, 0.1)
+sim = Simulator(2000, 0.001)
 
 # Assign simulator for every logger we want to keep track of time for
 for node in nodes:
     node.set_logger_simulator(sim)
 
 # Create channel
-channel = Channel()
+channel = Channel(packet_delay_per_unit=0.001) # If delay per unit is too high, it will mess up all calculations. TODO : fix that.
 
 # Register all nodes to channel
 channel.create_metric_mesh(CHANNEL_HEARING_RADIUS, *nodes)
