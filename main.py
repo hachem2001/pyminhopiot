@@ -31,7 +31,7 @@ CHANNEL_LOGGER = Logger("channel", verbose=True)
 class Loggable:
     """ An object that ships with a logging unit. Useful for logging what is happening (event callbacks etc ...) """
 
-    def __init__(self, logger=NONE_LOGGER, preamble='', active=True, verbose_overwrite=True):
+    def __init__(self, logger=NONE_LOGGER, preamble='', active=True, verbose_overwrite=True, simulator: 'Simulator'=None):
         """
         :logger: Logger object associated
         :preamble: Preamble to prepend to every logged message
@@ -42,19 +42,30 @@ class Loggable:
         self._logger_preamble = preamble
         self._logger_active = active
         self._logger_verbose_overwrite = verbose_overwrite
+        self._logger_simulator: 'Simulator' = simulator
 
     def _log(self, *args, end='', verbose_overwrite = True, **kwargs):
         """ Adds message to log. """
         if self._logger_active:
             output = StringIO()
             print(*args, file=output, end=end, **kwargs)
-            self._logger.log(f"{self._logger_preamble}"+output.getvalue(), verbose_overwrite and self._logger_verbose_overwrite)
-
+            extra_prependor = self._logger_simulator != None and f'|{self._logger_simulator.get_current_time():0.2f}| ' or ''
+            self._logger.log(f"{extra_prependor}{self._logger_preamble}"+output.getvalue(), verbose_overwrite and self._logger_verbose_overwrite)
+            
     def set_logger_active(self, active:bool):
+        """ Whether logs are saved (in memory) or not """
         self._logger_active = active
 
     def set_logger_verbose_overwrite(self, verbose_overwrite:bool):
+        """ Whether the messages saved in memory are shown in stdout. """
         self._logger_verbose_overwrite = verbose_overwrite
+    
+    def set_logger_simulator(self, simulator:'Simulator'):
+        """
+        Sets the simulator associated with this logger
+        Useful for adding timestamps to logs.
+        """
+        self._logger_simulator = simulator
 
 class Event:
     def __init__(self, time: float, callback: Callable[['Simulator'], Any], *args, **kwargs):

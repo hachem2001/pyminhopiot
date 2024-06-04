@@ -98,6 +98,8 @@ class NodeLP(Node):
 
     PACKETS_STATE_CAPACITY = 1 # Can only keep track of one.
 
+    RETRANSMIT_BACK_ACKS = False # If we try to send the Ack back to source.
+
     class NodeLP_PACKET_State(Enum):
         """
         The various internam finite state machine states described in the paper
@@ -178,8 +180,6 @@ class NodeLP(Node):
             """
             Keeps the jitter parameters, and merely changes the IDs treated by the jitter parameter
             """
-            self.packet_id = packet_id
-            self.packet_message_id = packet_message_id
 
             if source_id != False:
                 self.source_id = source_id
@@ -191,6 +191,15 @@ class NodeLP(Node):
 
             # Reset retransmission time : new packet, we didn't retransmit it yet
             self.retransmission_time = None
+
+            # Reset neighbour heard retransmission count if packet_id is different. TODO : is this correct ?
+            if self.packet_id != packet_id:
+                self.neighbours_noted.clear()
+                self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
+
+            # Change the IDs
+            self.packet_id = packet_id
+            self.packet_message_id = packet_message_id
 
         def register_neighbour(self, neighbour_id: int) -> bool:
             if neighbour_id in self.neighbours_noted and self.get_neighbours_count() < self.MAX_NUMBER_OF_NEIGHBOUR_IDS_STORABLE:
@@ -299,7 +308,7 @@ class NodeLP(Node):
             if mode == NodeLP.Suppression_Mode.REGULAR:
                 self.probability_of_forwarding = 1.0
             elif mode == NodeLP.Suppression_Mode.CONSERVATIVE:
-                self.probability_of_forwarding = 1.0 / self.get_neighbours_count()
+                self.probability_of_forwarding = 1.0 / max(1, self.get_neighbours_count())
             elif mode == NodeLP.Suppression_Mode.AGGRESSIVE:
                 self.probability_of_forwarding = SUPPRESSION_AGGRESSIVE_PROBABILITY
             
@@ -427,15 +436,18 @@ class NodeLP(Node):
         # Packet is assigned somewhere with packet_id_index in our list of packet ids that we can treat.
         internal_state = self.last_packets_informations[packet_id_index]
         self._log("state when received : ", internal_state.internal_state_for_packet)
+
         # Increase neighbour count !
-        if packet.data.last_in_path != self.get_id():
-            self.last_packets_informations[packet_id_index].register_neighbour(packet.data.last_in_path)
+        # if packet.data.last_in_path != self.get_id():
+        #    self.last_packets_informations[packet_id_index].register_neighbour(packet.data.last_in_path)
 
         if internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.IDLE:
             # Schedule retransmission.
             if packet.data.ack:
                 # TODO : Treat acks properly? For now paper says reduce jitter. To be explained I suppose.
                 self.last_packets_informations[packet_id_index].step_reduce_jitter()
+                if not self.RETRANSMIT_BACK_ACKS:
+                    return
             
             # Schedule transmission. Save event handle should the event be cancelled (e.g ack received)
             event = simulator.schedule_event(internal_state.get_jitter_random(), self.transmit_packet_lp_schedulable, packet)
@@ -459,7 +471,7 @@ class NodeLP(Node):
                 # Hear a forward retransmission? Treat it here
                 # Acknowledgement based delay reduction : an ACK recevied DIRECTLY FROM A GATEWAY (previous message in internal state was not an ACK)
                 if packet.data.ack and internal_state.packet_id != packet.get_id():
-                    # TODO : Overwrite current state and focus on forwarding the ack?? Not clear - opted FOR, for now.
+                    # TODO : Overwrite current state and focus on forwarding the ack?? Not clear - opted AGAINST (Juan Antonio specified we treat the simple case here, source receives no acks)
                     self.last_packets_informations[packet_id_index].half_reduce_jitter_with_minimize()
 
                     # For now : do that, as it means we are connected to Gateway.
@@ -468,8 +480,12 @@ class NodeLP(Node):
                     self.end_of_followup_pending_schedulable(simulator, packet, any_type_of_followup_received=True, direct_ack_from_gateway = True)
 
                     # and treat this packet immediately, starting fresh.
-                    self.process_packet(simulator, packet)
+                    if self.RETRANSMIT_BACK_ACKS:
+                        self.process_packet(simulator, packet)
                 else:
+                    # "Overheard neighbour" count increase!
+                    self.last_packets_informations[packet_id_index].register_neighbour(packet.data.last_in_path)
+
                     # Forward Delay Adaptation
                     self.last_packets_informations[packet_id_index].adapt_jitter(self.estimate_jitter_of_next_forwarding_node_within_channel(simulator, self.channel, packet_id_index, packet))
                     
