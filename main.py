@@ -289,19 +289,19 @@ class Channel:
             delay = distance * self.packet_delay_per_distance_unit
             simulator.schedule_event(delay,
                                      self.assigned_nodes[node_id].receive_packet, new_packet)
-            CHANNEL_LOGGER.log(
-                f"channel registered packet from {sender_id} to {node_id}")
+            #CHANNEL_LOGGER.log(f"channel registered packet from {sender_id} to {node_id}")
 
 class Node(Loggable):
     next_id = 1
 
-    def __init__(self, x: float, y: float, channel: 'Channel' = None):
+    def __init__(self, x: float, y: float, channel: 'Channel' = None, hearing_radius_capacity = -1):
         super(Node, self).__init__(logger=NODE_LOGGER, preamble=str(Node.next_id)+" - ")
         self.node_id = Node.next_id
         Node.next_id += 1
         self.x = x
         self.y = y
         self.channel = channel
+        self.hearing_radius_capacity = hearing_radius_capacity # if -1, channel takes care of it.
 
     def set_channel(self, channel: 'Channel'):
         """ Assign said channel to node. Called by channel. """
@@ -315,7 +315,6 @@ class Node(Loggable):
         Registers receiving a packet, then processing it. Call back used
         by channels.
         """
-        self._log(f"received packet: {packet}")
         self.process_packet(simulator, packet)
 
     def process_packet(self, simulator: 'Simulator', packet: 'Packer'):
@@ -330,7 +329,6 @@ class Node(Loggable):
         Broadcast packet through channel. 
         """
         assert (self.channel != None)
-        self._log(f"broadcast packet: {packet}")
         self.channel.handle_transmission(simulator, packet, self.get_id())
 
     def broadcast_packet_schedule(self, simulator: Simulator, packet: Packet, delay:float = 0.0):
@@ -349,9 +347,9 @@ class Gateway(Node):
         super(Node, self).__init__(logger=GATEWAY_LOGGER, preamble=str(Node.next_id)+" - ")
 
     def process_packet(self, simulator: Simulator, packet: Packet):
-        self._log(f"captured packet: {packet}")
         # Gateways can also process packets like regular nodes if needed
         # self.process_packet(simulator, packet)
+        pass
 
 class Source(Node):
     def __init__(self, x: float, y: float, interval: float, channel: 'Channel' = None):
@@ -366,5 +364,4 @@ class Source(Node):
 
     def send_packet(self, simulator: Simulator):
         packet = Packet(data="Hello", source_id=self.node_id)
-        self._log(f"sending packet: {packet}")
         self.broadcast_packet(simulator, packet)

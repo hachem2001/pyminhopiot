@@ -1,4 +1,4 @@
-from main import *
+from generic import *
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
@@ -12,14 +12,14 @@ CHANNEL_LOGGER.set_verbose(False)
 sim = Simulator(20, 0.01)
 
 # Create nodes with coordinates
-source = Source(0, 0, interval=5)
-node1 = Node(5, 0)
-node2 = Node(10, 0)
-node3 = Node(15, 0)
-gateway = Gateway(20, 0)
+source = SourceGeneric(0, 0, interval=5)
+node1 = NodeGeneric(5, 0)
+node2 = NodeGeneric(10, 0)
+node3 = NodeGeneric(15, 0)
+gateway = GatewayGeneric(20, 0)
 
 # Create channel
-channel = Channel()
+channel = ChannelGeneric()
 
 # Register all nodes to channel
 channel.create_metric_mesh(6.0, source, node1, node2, node3, gateway)

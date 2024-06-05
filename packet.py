@@ -4,10 +4,12 @@ from copy import deepcopy
 
 class Packet:
 
-    def __init__(self, data: Any, source_id: int):
+    def __init__(self, data: Any, source_id: int, first_emission_time:float = -1.0):
         self.data = data
         self.source_id = source_id
-        self.path = [source_id]  # This inforation remains internal.
+        self.path = [source_id]  # This information remains internal.
+        self.first_emission_time = first_emission_time # This information is indeed internal, but should be set by source to allow for example tracking how long a packet took to get to its rightful destination.
+        
         # self.path shall be used for internal testing purposes only.
         # for LPWAN, only data and source_id are to be used
 

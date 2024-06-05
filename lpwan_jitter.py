@@ -68,13 +68,13 @@ class PacketLP(Packet):
         
 
 
-    def __init__(self, source_id: int, ack : (bool, int)= (False, -1), before_last_in_path = -1):
+    def __init__(self, source_id: int, first_emission_time:float = -1, ack : (bool, int)= (False, -1), before_last_in_path = -1):
         """
         Re-insisting : "source_id" would be the gateway's ID if the
         gateway is sending a message back to a source.
         """
         data : self.DataLP = self.DataLP(source_id, PacketLP.packet_id_counter, ack, before_last_in_path)
-        super().__init__(data, source_id)
+        super().__init__(data, source_id, first_emission_time=first_emission_time)
         PacketLP.packet_id_counter += 1
 
     def get_id(self):
@@ -136,15 +136,17 @@ class NodeLP(Node):
 
         ADAPTATION_FACTOR = 0.5 # Value in interval (0,1]
         JITTER_MIN_VALUE = 0.2
-        JITTER_MAX_VALUE = 1.2 # 
-        JITTER_INTERVALS = 10 # Number of intervals to divide the jitter to.
+        JITTER_MAX_VALUE = 1.2
+        JITTER_INTERVALS = 50 # Number of intervals to divide the jitter to.
         # This corresponds to [0.2, 0.3], [0.3, 0.4], ... [1.1, 1.2]
-        _JITTER_INTERVAL_DURATION = (JITTER_MAX_VALUE - JITTER_MIN_VALUE)/JITTER_INTERVALS # USEFUL TO USE.
-        FOLLOWUP_PENDING_DONE_TIMEOUT = 2 * JITTER_MAX_VALUE # As used in the previous code.
 
         # Suppression default values
         SUPPRESSION_AGGRESSIVE_PROBABILITY = 0.2 # p_min as described in the paper
         def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.REGULAR
+
+        def _JITTER_INTERVAL_DURATION(self): return (self.JITTER_MAX_VALUE - self.JITTER_MIN_VALUE)/self.JITTER_INTERVALS
+
+        def _FOLLOWUP_PENDING_DONE_TIMEOUT(self): return 2 * self.JITTER_MAX_VALUE
 
         def __init__(self, packet_message_id = -1, source_id = -1, antecessor_id = -1, packet_id = -1):
             """
@@ -238,8 +240,8 @@ class NodeLP(Node):
             """ Sets jitter to a narrow interval around the given value. """
             # TODO : clip jitter instead
             assert jitter >= self.JITTER_MIN_VALUE and jitter <= self.JITTER_MAX_VALUE, "Jitter set outside of allowed values"
-            jitter_min_index = int(math.floor((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
-            jitter_max_index = int(math.ceil((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION))
+            jitter_min_index = int(math.floor((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION()))
+            jitter_max_index = int(math.ceil((jitter-self.JITTER_MIN_VALUE)/self._JITTER_INTERVAL_DURATION()))
             self.min_jitter = jitter_min_index
             self.max_jitter = jitter_max_index
             self.handle_suppression_possible_set()
@@ -542,7 +544,7 @@ class NodeLP(Node):
                 self.transmit_packet_lp_effective(simulator, packet)
                 # And go to follow-up-state, as well as set its appropriate triggers
                 self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.FOLLOWUP_PENDING
-                event = simulator.schedule_event(self.JitterSuppressionState.FOLLOWUP_PENDING_DONE_TIMEOUT, self.end_of_followup_pending_schedulable, packet, any_type_of_followup_received=False)
+                event = simulator.schedule_event(self.last_packets_informations[packet_id_index]._FOLLOWUP_PENDING_DONE_TIMEOUT(), self.end_of_followup_pending_schedulable, packet, any_type_of_followup_received=False)
                 self.last_packets_informations[packet_id_index].event_handle = event
             else:
                 # Drop packet and get to DONE state (Idle)
@@ -607,6 +609,9 @@ class GatewayLP(NodeLP):
         # GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
         # Schedule ACK message
         # NOTE : Here it is not scheduled but immediate ...
+        # Log time it took the packet to arrive
+        self._log(f"captured packet: {packet}")
+        self._log(f"source-to-gateway time for packet {packet.data.packet_id} is {(simulator.get_current_time() - packet.first_emission_time):.2f}, passing through {len(packet.path)-1} intermediate hops.")
         if not packet.data.ack:
             self.send_ack(simulator, packet)
 
@@ -617,7 +622,7 @@ class GatewayLP(NodeLP):
         :in_packet: Packet received for which an ACK will be created
         """
         # Source ID set to 0 because gateway. TODO (not yet set)
-        ack_packet = PacketLP(self.get_id(), ack=(True, in_packet.get_id()), before_last_in_path=in_packet.data.last_in_path)
+        ack_packet = PacketLP(self.get_id(), first_emission_time=simulator.get_current_time(), ack=(True, in_packet.get_id()), before_last_in_path=in_packet.data.last_in_path)
         self.broadcast_packet(simulator, ack_packet)
 
 class SourceLP(NodeLP):
@@ -633,20 +638,16 @@ class SourceLP(NodeLP):
     def start_sending(self, simulator: Simulator):
         self.send_packet(simulator)
 
-        # UNCOMMENT FOR PERIODIC SENDING
-
         simulator.schedule_event(self.interval, self.start_sending)
         # Don't add simulator as arg, added by default.
 
     def process_packet(self, simulator: Simulator, packet: PacketLP):
         # Drop packets.
-        
         if packet.data.ack:
             self._log(f"received ack for packet_id: {packet.data.ack[1]}, packet: {packet}")
-
         return
 
     def send_packet(self, simulator: Simulator):
-        packet = PacketLP(self.get_id(), False)
+        packet = PacketLP(self.get_id(), first_emission_time=simulator.get_current_time(), ack = False)
         self._log(f"sending packet: {packet}")
         self.broadcast_packet(simulator, packet)
