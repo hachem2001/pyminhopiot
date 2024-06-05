@@ -1,4 +1,4 @@
-from lpwan_jitter import *
+from piconetwork.lpwan_jitter import *
 
 """
 Linear cluster test

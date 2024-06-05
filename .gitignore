@@ -1,4 +1,5 @@
 .idea/
 .venv/
 __pycache__/
-.log_test
+.log_test*
+piconetwork.egg-info

@@ -1,4 +1,4 @@
-from lpwan_jitter import *
+from piconetwork.lpwan_jitter import *
 
 """
 Linear cluster test
@@ -36,27 +36,33 @@ CHANNEL_HEARING_RADIUS = R_VALUE
 inter_cluster_distance = R_VALUE * 5.0/6.0
 intra_cluster_distance = R_VALUE
 cluster_size = 10 # Number of nodes per cluster
-number_of_clusters = 100
+number_of_clusters = 20
 
 start_x = 0.0
 start_y = 0.0
 
 nodes = []
-source = SourceLP(start_x - inter_cluster_distance, start_y, 50)
+source = SourceLP(start_x , start_y, 50)
 nodes.append(source)
 
 for i in range(number_of_clusters):
     # Set the logging verbosity of every node to False except a handful we cherry pick
-    nodes_to_add = node_cluster_around(start_x + inter_cluster_distance*i, start_y, cluster_size, intra_cluster_distance)
+    nodes_to_add_top_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y + inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_distance)
+    nodes_to_add_bottom_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y - inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_distance)
     
-    for j in range(0, len(nodes_to_add)):
-        nodes_to_add[j].set_logger_verbose_overwrite(False)
+    for j in range(0, len(nodes_to_add_top_right_direction)):
+        nodes_to_add_top_right_direction[j].set_logger_verbose_overwrite(False)
+        nodes_to_add_bottom_right_direction[j].set_logger_verbose_overwrite(False)
     
-    nodes.extend(nodes_to_add)
-end_x = start_x + inter_cluster_distance * number_of_clusters
-end_y = 0
+    nodes.extend(nodes_to_add_top_right_direction)
+    nodes.extend(nodes_to_add_bottom_right_direction)
 
-nodes.append(GatewayLP(end_x, end_y))
+end_x = start_x + inter_cluster_distance/math.sqrt(2) * (number_of_clusters+1)
+end_y_1 = start_y + inter_cluster_distance/math.sqrt(2) * (number_of_clusters+1)
+end_y_2 = start_y - inter_cluster_distance/math.sqrt(2) * (number_of_clusters+1)
+
+nodes.append(GatewayLP(end_x, end_y_1))
+nodes.append(GatewayLP(end_x, end_y_2))
 
 # Example usage:
 sim = Simulator(20000, 0.001)

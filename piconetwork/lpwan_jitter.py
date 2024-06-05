@@ -1,6 +1,6 @@
-from main import *
-from packet import Packet
-from logger import Logger
+from .main import *
+from .packet import Packet
+from .logger import Logger
 
 from typing import Any, Tuple
 from enum import Enum, auto

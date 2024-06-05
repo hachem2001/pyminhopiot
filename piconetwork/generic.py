@@ -1,4 +1,4 @@
-from main import *
+from .main import *
 
 class ChannelGeneric(Channel):
     def handle_transmission(self, simulator: 'Simulator',

@@ -17,8 +17,8 @@ This is naturally not representative of the real world
 
 
 # User made imports
-from packet import Packet
-from logger import Logger
+from .packet import Packet
+from .logger import Logger
 
 NONE_LOGGER = Logger("none", verbose=False)
 EVENT_LOGGER = Logger("event", verbose=False)

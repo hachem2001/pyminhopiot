@@ -1,4 +1,4 @@
-from generic import *
+from piconetwork.generic import *
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False)
