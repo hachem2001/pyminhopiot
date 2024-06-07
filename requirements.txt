@@ -1,0 +1,2 @@
+nographs==3.3.2
+-e git+ssh://git@github.com/hachem2001/pyminhopiot.git@3a4cde447df58669afefe7cd697510ee138dac21#egg=piconetwork

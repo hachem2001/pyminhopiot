@@ -253,6 +253,16 @@ class Channel:
                 id_to_return = i
         return id_to_return
 
+    def get_neighbour_ids(self, node_id) -> List[int]:
+        """
+        Return list of indices of connected neighbours.
+        """
+        result = set()
+        for (_id, distance) in self.adjacencies_per_node[node_id]:
+            result.add(_id)
+        
+        return list(result)
+    
     def get_distance(self, node_id_1: int, node_id_2: int):
         """ Returns the distance for node_id_1 -> node_id_2 if it exists. """
         assert(self.check_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
@@ -278,6 +288,7 @@ class Channel:
                         node.distance_to(other_node) <= distance_threshold:
                     self.create_bidirectional_link(node.get_id(),
                                                    other_node.get_id(), node.distance_to(other_node))
+                    CHANNEL_LOGGER.log(f"Created link ({node.get_id()}, {node.x:.2f}, {node.y:.2f}), ({other_node.get_id()}, {other_node.x:.2f}, {other_node.y:.2f})")
 
     def handle_transmission(self, simulator: 'Simulator',
                             packet: 'Packet', sender_id: int):

@@ -142,7 +142,7 @@ class NodeLP(Node):
 
         # Suppression default values
         SUPPRESSION_AGGRESSIVE_PROBABILITY = 0.2 # p_min as described in the paper
-        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.REGULAR
+        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.CONSERVATIVE
 
         def _JITTER_INTERVAL_DURATION(self): return (self.JITTER_MAX_VALUE - self.JITTER_MIN_VALUE)/self.JITTER_INTERVALS
 
