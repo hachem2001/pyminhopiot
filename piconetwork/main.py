@@ -187,6 +187,10 @@ class Channel:
         node.set_channel(self)
         self.adjacencies_per_node[node.get_id()] = []
 
+    def get_assigned_node(self, node_id: int) -> 'Node':
+        """ Returns a node handle for given node_id. This assumes it is assigned to the channel """
+        return self.assigned_nodes[node_id]
+
     def assign_isolated_nodes(self, *args: 'Node'):
         """
         It might feel counterintuitive here, but the instead of doing
