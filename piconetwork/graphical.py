@@ -1,7 +1,7 @@
 from .lpwan_jitter import *
 import matplotlib.pyplot as plt
 
-def plot_nodes_agnostic(nodes_list: 'Node', channel: 'Channel', min_x, min_y, max_x, max_y, ):
+def plot_nodes_agnostic(nodes_list: List['Node'], channel: 'Channel', min_x, min_y, max_x, max_y, ):
     # Create a figure and axis
     fig, ax = plt.subplots()
 
@@ -56,7 +56,7 @@ def plot_nodes_agnostic(nodes_list: 'Node', channel: 'Channel', min_x, min_y, ma
 
     plt.show()
 
-def plot_nodes_lpwan(nodes_list: 'NodeLP', channel: 'Channel', min_x, min_y, max_x, max_y, ):
+def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_y, max_x, max_y, ):
     # Create a figure and axis
     fig, ax = plt.subplots()
 
@@ -117,4 +117,14 @@ def plot_nodes_lpwan(nodes_list: 'NodeLP', channel: 'Channel', min_x, min_y, max
     plt.tight_layout()
     fig.subplots_adjust(right=0.8)  # Adjust right to make space for the legend
 
+    plt.show()
+
+def plot_lpwan_jitter_interval_distribution(nodes: List[NodeLP]):
+    count_per_jitter_interval = [0 for i in range(NodeLP.JitterSuppressionState.JITTER_INTERVALS)]
+    for node in nodes:
+        if isinstance(node, NodeLP):
+            count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
+    plt.bar([i+1 for i in range(NodeLP.JitterSuppressionState.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes')
+    plt.legend()
+    plt.xlabel('Jitter Interval')
     plt.show()

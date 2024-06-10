@@ -1,14 +1,16 @@
 from piconetwork.lpwan_jitter import *
 import sys
 import nographs
-from piconetwork.graphical import plot_nodes_lpwan; import matplotlib.pyplot as plt
+from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution; import matplotlib.pyplot as plt
 import threading
 
 """
 Distribution of nodes over a strip, test.
 """
 
-random.seed(5)
+# Interesting config : 5, 30.0, 19.0
+
+random.seed(6)
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False); EVENT_LOGGER.set_effective(False)
@@ -49,7 +51,7 @@ NODES_DENSITY = 1.5 ; assert(NODES_DENSITY > 0.58) # Inspired from percolation d
 NodeLP.JitterSuppressionState.JITTER_MIN_VALUE = 0.2
 NodeLP.JitterSuppressionState.JITTER_MAX_VALUE = 1.2
 NodeLP.JitterSuppressionState.ADAPTATION_FACTOR = 0.5
-NodeLP.JitterSuppressionState.JITTER_INTERVALS = 20
+NodeLP.JitterSuppressionState.JITTER_INTERVALS = 10
 
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 19.0
@@ -65,7 +67,7 @@ y_height = y_box_max - y_box_max
 box_surface_max = (y_box_max - y_box_min) * (x_box_max - x_box_min)
 nodes = []
 
-source = SourceLP(x_box_min , (y_box_max+y_box_min)/2.0, 50)
+source = SourceLP(x_box_min , (y_box_max+y_box_min)/2.0, 25)
 nodes.append(source)
 
 # Add nodes until full density with regards to "surface of possible hearing" matches with NODES_DENSITY.
@@ -114,7 +116,7 @@ else:
 print("Number of source neighbours : ", len(channel.adjacencies_per_node[source.get_id()]))
 
 # Example usage:
-sim = Simulator(5000, 0.00001)
+sim = Simulator(2500, 0.00001)
 
 # Assign simulator for every logger we want to keep track of time for
 for node in nodes:
@@ -127,8 +129,10 @@ sim.add_nodes(*nodes)
 source.start_sending(sim)
 
 plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+plot_lpwan_jitter_interval_distribution(nodes)
 
 # Run the simulator
 sim.run()
 
 plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+plot_lpwan_jitter_interval_distribution(nodes)

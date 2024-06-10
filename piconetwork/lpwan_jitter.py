@@ -121,6 +121,7 @@ class NodeLP(Node):
         REGULAR = auto()
         CONSERVATIVE = auto()
         AGGRESSIVE = auto()
+        #BOLD = auto() # I call it bold because it retransmits-not so long as it does not hear a retransmitter. 
 
     class JitterSuppressionState:
         """
@@ -142,7 +143,7 @@ class NodeLP(Node):
 
         # Suppression default values
         SUPPRESSION_AGGRESSIVE_PROBABILITY = 0.2 # p_min as described in the paper
-        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.CONSERVATIVE
+        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.AGGRESSIVE
 
         def _JITTER_INTERVAL_DURATION(self): return (self.JITTER_MAX_VALUE - self.JITTER_MIN_VALUE)/self.JITTER_INTERVALS
 
@@ -159,7 +160,7 @@ class NodeLP(Node):
             self.source_id = source_id
 
             # Jitter adaptation internal state
-            self.min_jitter = 0 # MUST BE A NUMBER BETWEEN 0 and min(self.max_jitter,JITTER_INTERVALS)-1
+            self.min_jitter = self.JITTER_INTERVALS-1 # MUST BE A NUMBER BETWEEN 0 and min(self.max_jitter,JITTER_INTERVALS)-1
             self.max_jitter = self.JITTER_INTERVALS # MUST BE A NUMBER max(self.min_jitter,0)+1 and JITTER_INTERVALS
 
             self.reset_jitter() # To keep the implementation self-coherent.
@@ -197,9 +198,9 @@ class NodeLP(Node):
             self.retransmission_time = None
 
             # Reset neighbour heard retransmission count if packet_id is different. TODO : is this correct ?
-            if self.packet_id != packet_id:
-                self.neighbours_noted.clear()
-                self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
+            #if self.packet_id != packet_id:
+            #    self.neighbours_noted.clear()
+            #    self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
 
             # Change the IDs
             self.packet_id = packet_id
@@ -256,13 +257,13 @@ class NodeLP(Node):
 
         def step_reduce_jitter(self):
             """ Decreases jitter interval indexes of both min and max by 1 """
-            self.min_jitter = max(0, self.min_jitter - 1)
-            self.max_jitter = max(self.min_jitter, self.max_jitter - 1)
+            self.min_jitter = max(0, self.min_jitter - 1) # The order is important
+            self.max_jitter = max(self.min_jitter + 1, self.max_jitter - 1)
 
         def step_increase_jitter(self):
             """ Increases jitter interval indexes of both min and max by 1 """
-            self.min_jitter = max(0, self.min_jitter - 1)
-            self.max_jitter = max(self.min_jitter, self.max_jitter - 1)
+            self.max_jitter = min(self.max_jitter + 1, self.JITTER_INTERVALS) # The order is important
+            self.min_jitter = min(self.min_jitter + 1, self.max_jitter - 1)
             self.handle_suppression_possible_set()
 
         def double_increase_jitter_with_minimize(self):
@@ -320,7 +321,7 @@ class NodeLP(Node):
 
         def handle_suppression_possible_set(self, no_followup_heard : bool = False):
             possibility_1 = no_followup_heard
-            possibility_2 = self.max_jitter == self.JITTER_MAX_VALUE and self.min_jitter == self.JITTER_MIN_VALUE
+            possibility_2 = self.max_jitter == self.JITTER_INTERVALS # and self.min_jitter == self.JITTER_INTERVALS - 1 # TODO : Fix this.
             if possibility_1 or possibility_2:
                 self.set_suppression_mode(self.SUPPRESSION_MODE_SWITCH())
 
