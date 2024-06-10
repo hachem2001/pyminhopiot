@@ -61,8 +61,8 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     fig, ax = plt.subplots()
 
     # Define different markers and colors for different types of nodes
-    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.'}
-    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange'}
+    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1'}
+    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange', 'unengaged': 'black'}
 
     for node in nodes_list:
         x = node.x
@@ -74,8 +74,11 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
             # Check if suppressed or not
                 node_type = 'source'
         else:
-            if node.last_packets_informations[0].suppression_mode == node.last_packets_informations[0].SUPPRESSION_MODE_SWITCH():
+            suppression_mode = node.last_packets_informations[0].suppression_mode
+            if suppression_mode == node.last_packets_informations[0].SUPPRESSION_MODE_SWITCH:
                 node_type = 'suppressed'
+            elif suppression_mode == NodeLP_Suppression_Mode.NEVER_ENGAGED:
+                node_type = 'unengaged'
             else:
                 node_type = 'node'
 

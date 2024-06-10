@@ -86,6 +86,30 @@ class PacketLP(Packet):
     def get_antecessor_id(self):
         return self.data.last_in_path
 
+class NodeLP_PACKET_State(Enum):
+    """
+    The various internam finite state machine states described in the paper
+    For a NodeLP.
+
+    They are per PACKET.
+    """
+    IDLE = auto()
+    RETX_PENDING = auto()
+    FOLLOWUP_PENDING = auto()
+    DONE = auto() # Redundant to be honest. If done, just turn back to Idle immediately after done.
+
+class NodeLP_Suppression_Mode(Enum):
+    """
+    Different suppression modes that can be used by a node
+    """
+    NEVER_ENGAGED = auto() # Fake state to take note of nodes that never received a message.
+    REGULAR = auto()
+    CONSERVATIVE = auto()
+    AGGRESSIVE = auto()
+    BOLD = auto() # I call it bold because it retransmits-not so long as it does not hear a retransmitter.
+    DEFAULT_START = NEVER_ENGAGED # START MODE OF NODES.
+    DEFAULT_SUPPRESSION = AGGRESSIVE # DEFINE DEFAULT SUPPRESSION MODE HERE!
+
 class NodeLP(Node):
     """
     Implementation following paper.
@@ -101,27 +125,6 @@ class NodeLP(Node):
     RETRANSMIT_BACK_ACKS = False # If we try to send the Ack back to source.
 
     DISSALLOW_MULTIPLE_RETRANSMISSIONS = True # If the same packet_id can be reassigned to the same window as before. can happen in some "ping pong" situations
-
-    class NodeLP_PACKET_State(Enum):
-        """
-        The various internam finite state machine states described in the paper
-        For a NodeLP.
-
-        They are per PACKET.
-        """
-        IDLE = auto()
-        RETX_PENDING = auto()
-        FOLLOWUP_PENDING = auto()
-        DONE = auto() # Redundant to be honest. If done, just turn back to Idle immediately after done.
-
-    class Suppression_Mode(Enum):
-        """
-        Different suppression modes that can be used by a node
-        """
-        REGULAR = auto()
-        CONSERVATIVE = auto()
-        AGGRESSIVE = auto()
-        #BOLD = auto() # I call it bold because it retransmits-not so long as it does not hear a retransmitter. 
 
     class JitterSuppressionState:
         """
@@ -143,7 +146,7 @@ class NodeLP(Node):
 
         # Suppression default values
         SUPPRESSION_AGGRESSIVE_PROBABILITY = 0.2 # p_min as described in the paper
-        def SUPPRESSION_MODE_SWITCH(self): return NodeLP.Suppression_Mode.AGGRESSIVE
+        SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.DEFAULT_SUPPRESSION
 
         def _JITTER_INTERVAL_DURATION(self): return (self.JITTER_MAX_VALUE - self.JITTER_MIN_VALUE)/self.JITTER_INTERVALS
 
@@ -169,11 +172,11 @@ class NodeLP(Node):
 
             # Overhead suppression internal state
             self.neighbours_noted = set() # Number of recorded neighbours is in here.
-            self.suppression_mode : NodeLP.Suppression_Mode = NodeLP.Suppression_Mode.REGULAR
+            self.suppression_mode : NodeLP_Suppression_Mode = NodeLP_Suppression_Mode.DEFAULT_START
             self.probability_of_forwarding = 1.0 # between 0.0 and 1.0
 
             # State of packet
-            self.internal_state_for_packet = NodeLP.NodeLP_PACKET_State.IDLE
+            self.internal_state_for_packet = NodeLP_PACKET_State.IDLE
 
             # For cancelling event of schedulered transmission or scheduled followup if necessary. It can be thought of as a time internal state variable.
             self.event_handle : Event = None
@@ -200,11 +203,15 @@ class NodeLP(Node):
             # Reset neighbour heard retransmission count if packet_id is different. TODO : is this correct ?
             #if self.packet_id != packet_id:
             #    self.neighbours_noted.clear()
-            #    self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
+            #    self.set_suppression_mode(NodeLP_Suppression_Mode.REGULAR)
 
             # Change the IDs
             self.packet_id = packet_id
             self.packet_message_id = packet_message_id
+
+            # If NEVER ENGAGED, SWITCH TO REGULAR MODE
+            if self.suppression_mode == NodeLP_Suppression_Mode.NEVER_ENGAGED:
+                self.set_suppression_mode(NodeLP_Suppression_Mode.REGULAR)
 
         def register_neighbour(self, neighbour_id: int) -> bool:
             if neighbour_id in self.neighbours_noted and self.get_neighbours_count() < self.MAX_NUMBER_OF_NEIGHBOUR_IDS_STORABLE:
@@ -296,25 +303,25 @@ class NodeLP(Node):
             The paper's second point in each suppression mode defines a way to reset the probability of forwarding to 1.
             :jitter_of_other: estimated jitter of forwarder of the packet.
             """
-            if self.suppression_mode == NodeLP.Suppression_Mode.REGULAR:
+            if self.suppression_mode == NodeLP_Suppression_Mode.REGULAR:
                 # Already in the right configuration, so do nothing
                 pass
-            elif self.suppression_mode == NodeLP.Suppression_Mode.CONSERVATIVE:
+            elif self.suppression_mode == NodeLP_Suppression_Mode.CONSERVATIVE:
                 # We assume the function call came when we confirmed one of the two forwarding types.
-                self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
-            elif self.suppression_mode == NodeLP.Suppression_Mode.AGGRESSIVE:
+                self.set_suppression_mode(NodeLP_Suppression_Mode.REGULAR)
+            elif self.suppression_mode == NodeLP_Suppression_Mode.AGGRESSIVE:
                 if direct_ack_from_gateway or jitter_of_other <= self.get_jitter_average():
-                    self.set_suppression_mode(NodeLP.Suppression_Mode.REGULAR)
+                    self.set_suppression_mode(NodeLP_Suppression_Mode.REGULAR)
         
         def set_suppression_mode(self, mode):
             """
             Switch suppression mode to the one specified.
             """
-            if mode == NodeLP.Suppression_Mode.REGULAR:
+            if mode == NodeLP_Suppression_Mode.REGULAR:
                 self.probability_of_forwarding = 1.0
-            elif mode == NodeLP.Suppression_Mode.CONSERVATIVE:
+            elif mode == NodeLP_Suppression_Mode.CONSERVATIVE:
                 self.probability_of_forwarding = 1.0 / max(1, self.get_neighbours_count())
-            elif mode == NodeLP.Suppression_Mode.AGGRESSIVE:
+            elif mode == NodeLP_Suppression_Mode.AGGRESSIVE:
                 self.probability_of_forwarding = self.SUPPRESSION_AGGRESSIVE_PROBABILITY
             
             self.suppression_mode = mode
@@ -323,7 +330,7 @@ class NodeLP(Node):
             possibility_1 = no_followup_heard
             possibility_2 = self.max_jitter == self.JITTER_INTERVALS # and self.min_jitter == self.JITTER_INTERVALS - 1 # TODO : Fix this.
             if possibility_1 or possibility_2:
-                self.set_suppression_mode(self.SUPPRESSION_MODE_SWITCH())
+                self.set_suppression_mode(self.SUPPRESSION_MODE_SWITCH)
 
     def estimate_jitter_of_next_forwarding_node_within_channel(self, simulator: 'Simulator', channel: 'Channel', window_id_index : int , packet: 'PacketLP'):
         """
@@ -454,7 +461,7 @@ class NodeLP(Node):
         # if packet.data.last_in_path != self.get_id():
         #    self.last_packets_informations[packet_id_index].register_neighbour(packet.data.last_in_path)
 
-        if internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.IDLE:
+        if internal_state.internal_state_for_packet == NodeLP_PACKET_State.IDLE:
             # Schedule retransmission.
             if packet.data.ack:
                 # TODO : Treat acks properly? For now paper says reduce jitter. To be explained I suppose.
@@ -465,9 +472,9 @@ class NodeLP(Node):
             # Schedule transmission. Save event handle should the event be cancelled (e.g ack received)
             event = simulator.schedule_event(internal_state.get_jitter_random(), self.transmit_packet_lp_schedulable, packet)
             self.last_packets_informations[packet_id_index].event_handle = event
-            self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.RETX_PENDING
+            self.last_packets_informations[packet_id_index].internal_state_for_packet = NodeLP_PACKET_State.RETX_PENDING
      
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.RETX_PENDING:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.RETX_PENDING:
             if packet.data.ack:
                 # Overhearing gateway acknowledgement : suppress transmission, as well as reduce jitter. TODO : reduce??
                 if internal_state.packet_id != packet.get_id(): # Tests if last-hop gateway ack
@@ -478,7 +485,7 @@ class NodeLP(Node):
                 # Or this below : TODO
                 # self.last_packets_informations[packet_id_index].event_handle.cancel()   
             
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.FOLLOWUP_PENDING:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.FOLLOWUP_PENDING:
             # If we hear a packet that is forwarding our message (last_in_path is this node) : move to Done.
             if packet.data.before_last_in_path == self.get_id():
                 # Hear a forward retransmission? Treat it here
@@ -514,7 +521,7 @@ class NodeLP(Node):
                 # NOTE : neighbour count is increased at the TOP of the function.
                 pass
                 
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.DONE:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.DONE:
             raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
 
     def transmit_packet_lp_schedulable(self, simulator: 'Simulator', packet: 'PacketLP'):
@@ -530,11 +537,11 @@ class NodeLP(Node):
 
         internal_state = self.last_packets_informations[packet_id_index]
         
-        if internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.IDLE:
+        if internal_state.internal_state_for_packet == NodeLP_PACKET_State.IDLE:
             raise AssertionError("Idle state not expected in scheduled transmission. Event of retransmission should be _canceled_ in the case packet treatment halted")
             # Event handle is kept when scheduled, allowing the cancelling of the event. This shouldn't happen
             
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.RETX_PENDING:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.RETX_PENDING:
             # Expected state. Proceed as per the paper. This is the "jitter timeout" situation.
             # Two possibilities, depending on random probability outcome : allowed to send, or not allowed to send.
 
@@ -544,20 +551,20 @@ class NodeLP(Node):
                 self.last_packets_informations[packet_id_index].retransmission_time = simulator.get_current_time()
                 self.transmit_packet_lp_effective(simulator, packet)
                 # And go to follow-up-state, as well as set its appropriate triggers
-                self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.FOLLOWUP_PENDING
+                self.last_packets_informations[packet_id_index].internal_state_for_packet = NodeLP_PACKET_State.FOLLOWUP_PENDING
                 event = simulator.schedule_event(self.last_packets_informations[packet_id_index]._FOLLOWUP_PENDING_DONE_TIMEOUT(), self.end_of_followup_pending_schedulable, packet, any_type_of_followup_received=False)
                 self.last_packets_informations[packet_id_index].event_handle = event
             else:
                 # Drop packet and get to DONE state (Idle)
-                self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.IDLE
+                self.last_packets_informations[packet_id_index].internal_state_for_packet = NodeLP_PACKET_State.IDLE
                 self.last_packets_informations[packet_id_index].event_handle = None
                 self.packet_window_free(packet_id_index)
                 self._log(f"dropped packet {packet} on suppression state")
 
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.FOLLOWUP_PENDING:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.FOLLOWUP_PENDING:
             raise AssertionError("Followup state unexpected, as it is the transmission event that is supposed to set the state to followup_pending or done/idle")
 
-        elif internal_state.internal_state_for_packet == self.NodeLP_PACKET_State.DONE:
+        elif internal_state.internal_state_for_packet == NodeLP_PACKET_State.DONE:
             raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
 
     def end_of_followup_pending_schedulable(self, simulator: 'Simulator', packet: 'PacketLP', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
@@ -580,7 +587,7 @@ class NodeLP(Node):
             self.last_packets_informations[packet_id_index].step_increase_jitter()
             self.last_packets_informations[packet_id_index].handle_suppression_possible_set(no_followup_heard=True)
         
-        self.last_packets_informations[packet_id_index].internal_state_for_packet = self.NodeLP_PACKET_State.IDLE
+        self.last_packets_informations[packet_id_index].internal_state_for_packet = NodeLP_PACKET_State.IDLE
         self.last_packets_informations[packet_id_index].event_handle = None
         self.packet_window_free(packet_id_index)
 
