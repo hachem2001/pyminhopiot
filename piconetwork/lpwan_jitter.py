@@ -168,7 +168,7 @@ class NodeLP(Node):
 
             # Overhead suppression internal state
             self.neighbours_noted = set() # Number of recorded neighbours is in here.
-            self.suppression_mode : NodeLP.Suppression_Mode = NodeLP.Suppression_Mode.CONSERVATIVE
+            self.suppression_mode : NodeLP.Suppression_Mode = NodeLP.Suppression_Mode.REGULAR
             self.probability_of_forwarding = 1.0 # between 0.0 and 1.0
 
             # State of packet
@@ -314,7 +314,7 @@ class NodeLP(Node):
             elif mode == NodeLP.Suppression_Mode.CONSERVATIVE:
                 self.probability_of_forwarding = 1.0 / max(1, self.get_neighbours_count())
             elif mode == NodeLP.Suppression_Mode.AGGRESSIVE:
-                self.probability_of_forwarding = SUPPRESSION_AGGRESSIVE_PROBABILITY
+                self.probability_of_forwarding = self.SUPPRESSION_AGGRESSIVE_PROBABILITY
             
             self.suppression_mode = mode
 

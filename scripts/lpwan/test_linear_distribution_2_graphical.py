@@ -1,14 +1,14 @@
 from piconetwork.lpwan_jitter import *
 import sys
 import nographs
-import matplotlib.pyplot as plt
+from piconetwork.graphical import plot_nodes_lpwan; import matplotlib.pyplot as plt
 import threading
 
 """
 Distribution of nodes over a strip, test.
 """
 
-#random.seed(1)
+random.seed(5)
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False); EVENT_LOGGER.set_effective(False)
@@ -51,13 +51,13 @@ NodeLP.JitterSuppressionState.JITTER_MAX_VALUE = 1.2
 NodeLP.JitterSuppressionState.ADAPTATION_FACTOR = 0.5
 NodeLP.JitterSuppressionState.JITTER_INTERVALS = 20
 
-HEARING_RADIUS = 10.0
-DENSITY_RADIUS = 5.0
+HEARING_RADIUS = 30.0
+DENSITY_RADIUS = 19.0
 
 x_box_min = 0.0
 x_box_max = 300.0
-y_box_min = -30.0
-y_box_max = 30.0
+y_box_min = -150.0
+y_box_max = 150.0
 
 x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_max
@@ -84,66 +84,21 @@ channel = Channel(packet_delay_per_unit=0.001) # If delay per unit is too high, 
 # Register all nodes to channel
 channel.create_metric_mesh(HEARING_RADIUS, *nodes)
 
+def recurrent_plot_nodes_lpwan(nodes: 'NodeLP', channel : 'Channel', x_min, y_min, x_max, y_max, interval, repetitions):
+
+    for _ in range(repetitions):
+        time.sleep(interval)
+
+        plt.close('all')
+        plt.ion()
+        plot_nodes_lpwan(nodes, channel, x_min, y_min, x_max, y_max)
+        plt.pause(interval)  # Pause to update the plot
+
 # Plot the graph
-def plot_nodes(nodes_list, channel, min_x, min_y, max_x, max_y):
-    # Example data
-
-    # Create a figure and axis
-    fig, ax = plt.subplots()
-
-    # Define different markers and colors for different types of nodes
-    markers = {'source': 'o', 'gateway': 's', 'node': 'x'}
-    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green'}
-
-    for node in nodes_list:
-        x = node.x
-        y = node.y
-        node_type = 'node'
-        if isinstance(node, GatewayLP):
-            node_type = 'gateway'
-        if isinstance(node, SourceLP):
-            node_type = 'source'
-
-        marker = markers[node_type]
-        color = colors[node_type]
-        
-        ax.scatter(x, y, label=node_type, marker=marker, color=color, s=100)  # s is the size of the marker
-        if node_type == 'gateway' or node_type == 'source':
-            ax.text(x, y, node.get_id(), fontsize=12, ha='right')  # Annotate the node with its ID
-
-    # Plot the connections
-    for node in nodes_list:
-        x1 = node.x
-        y1 = node.y
-        for neighbor_id in channel.get_neighbour_ids(node.get_id()):
-            neighbour = channel.get_assigned_node(neighbor_id)
-            x2 = neighbour.x
-            y2 = neighbour.y
-            ax.plot([x1, x2], [y1, y2], 'k-', lw=1)  # k- is black color line, lw is line width
-
-    # Add legend
-    handles, labels = ax.get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1, 1))
-
-    # Set axis limits
-    ax.set_xlim(min_x, max_x)
-    ax.set_ylim(min_y, max_y)
-    ax.set_aspect('equal', 'box') # For faithful representation
-
-    # Set labels
-    ax.set_xlabel('X Coordinate')
-    ax.set_ylabel('Y Coordinate')
-    ax.set_title('Node Network')
-
-    # Show plot
-    plt.tight_layout()
-    fig.subplots_adjust(right=0.8)  # Adjust right to make space for the legend
-
-    plt.show()
-
-plotting_thread = threading.Thread(target=plot_nodes, args=(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05))
-plotting_thread.start()
+update_interval_in_seconds = 1.5
+repetitions_of_updates = 20
+#plotting_thread = threading.Thread(target=recurrent_plot_nodes_lpwan, args=(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05, update_interval_in_seconds, repetitions_of_updates))
+#plotting_thread.start()
 
 # Check path existence with NoGraphs library
 traversal = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source.get_id())
@@ -159,7 +114,7 @@ else:
 print("Number of source neighbours : ", len(channel.adjacencies_per_node[source.get_id()]))
 
 # Example usage:
-sim = Simulator(20000, 0.001)
+sim = Simulator(5000, 0.00001)
 
 # Assign simulator for every logger we want to keep track of time for
 for node in nodes:
@@ -171,5 +126,9 @@ sim.add_nodes(*nodes)
 # Start sending packets from source
 source.start_sending(sim)
 
+plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+
 # Run the simulator
 sim.run()
+
+plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
