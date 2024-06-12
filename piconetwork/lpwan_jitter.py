@@ -94,26 +94,12 @@ class NodeLP_BaseState_Handler():
     A NodeLP packet handler _must_ define these states by default. 
     """
     
-    def process_packet(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+    def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         """ Process first-arriving packet """
         raise NotImplementedError("Handle method not implemented")
 
-    def transmit_packet_lp_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
-        """
-        Do some treatment when RETX_PENDING reaches its end, and has to decide whether or not to transmit.
-        Note: TODO : remove this function and have that done in a cleaner way within NodeLP_Retxpending_Handler without having to force every state to handle this.
-        """
-        raise NotImplementedError("Handle method not implemented")
-
-    def end_of_followup_pending_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
-        """
-        Same as above but for followup-pending.
-        TODO : same thing, remove this and have it properly only treated by NodeLP_Followuppending_Handler
-        """
-        raise NotImplementedError("Handle method not implemented")
-
 class NodeLP_Idle_Handler(NodeLP_BaseState_Handler):
-    def process_packet(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+    def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
     # Schedule retransmission.
         if packet.data.ack:
             # TODO : Treat acks properly? For now paper says reduce jitter. To be explained I suppose.
@@ -122,18 +108,12 @@ class NodeLP_Idle_Handler(NodeLP_BaseState_Handler):
                 return
         
         # Schedule transmission. Save event handle should the event be cancelled (e.g ack received)
-        event = simulator.schedule_event(packet_jitter_info.get_jitter_random(), node.transmit_packet_lp_schedulable, packet)
+        packet_jitter_info.set_internal_state(NodeLP_Packet_State.RETX_PENDING) # USE NodeLP_Packet_State.RETX_PENDING.value below, or else "self" wouldn't be passed.
+        event = simulator.schedule_event(packet_jitter_info.get_jitter_random(), NodeLP_Packet_State.RETX_PENDING.value.transmit_packet_lp_schedulable, node, packet, packet_jitter_info)
         packet_jitter_info.event_handle = event
-        packet_jitter_info.set_internal_state(NodeLP_Packet_State.RETX_PENDING)
-
-    def transmit_packet_lp_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
-        raise AssertionError("Idle state not expected in scheduled transmission. Event of retransmission should be _canceled_ in the case packet treatment halted")
-
-    def end_of_followup_pending_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
-        raise NotImplementedError("Handle method not implemented")
 
 class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
-    def process_packet(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+    def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         # Schedule retransmission.
         if packet.data.ack:
             # Overhearing gateway acknowledgement : suppress transmission, as well as reduce jitter. TODO : reduce??
@@ -145,9 +125,16 @@ class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
             # Or this below : TODO
             # packet_jitter_info.event_handle.cancel()   
 
-    def transmit_packet_lp_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+    def transmit_packet_lp_schedulable(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+        """
+        Schedulable immediate transmission. It checks current state, but its aim is to initite immediate transmission
+        TODO : If the transmission takes time, the node would no longer be able to receive packets, and collision can happen etc etc.
+        TODO : add safeguard mecanism should packet window not be assigned (for whatever coding error there was) allowing to verify this quickly.
+        """
         # Expected state. Proceed as per the paper. This is the "jitter timeout" situation.
         # Two possibilities, depending on random probability outcome : allowed to send, or not allowed to send.
+        if packet_jitter_info.get_internal_state() != NodeLP_Packet_State.RETX_PENDING:
+            raise AssertionError("State not expected in scheduled transmission. Event of retransmission should be _canceled_ in the case packet treatment halted")
 
         random_decisive_variable = random.random()
         if random_decisive_variable < packet_jitter_info.probability_of_forwarding:
@@ -155,8 +142,8 @@ class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
             packet_jitter_info.retransmission_time = simulator.get_current_time()
             node.transmit_packet_lp_effective(simulator, packet)
             # And go to follow-up-state, as well as set its appropriate triggers
-            packet_jitter_info.set_internal_state(NodeLP_Packet_State.FOLLOWUP_PENDING)
-            event = simulator.schedule_event(packet_jitter_info._FOLLOWUP_PENDING_DONE_TIMEOUT(), node.end_of_followup_pending_schedulable, packet, any_type_of_followup_received=False)
+            packet_jitter_info.set_internal_state(NodeLP_Packet_State.FOLLOWUP_PENDING) # Same thing : use value from enum to have 'self' defined, here below.
+            event = simulator.schedule_event(packet_jitter_info._FOLLOWUP_PENDING_DONE_TIMEOUT(), NodeLP_Packet_State.FOLLOWUP_PENDING.value.end_of_followup_pending_schedulable, node, packet, packet_jitter_info, any_type_of_followup_received=False)
             packet_jitter_info.event_handle = event
         else:
             # Drop packet and get to DONE state (Idle)
@@ -165,11 +152,8 @@ class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
             node.packet_window_free(packet_jitter_info.packet_id_index)
             node._log(f"dropped packet {packet} on suppression state")
 
-    def end_of_followup_pending_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
-        raise NotImplementedError("Handle method not implemented")
-
 class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
-    def process_packet(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
+    def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         # If we hear a packet that is forwarding our message (last_in_path is this node) : move to Done.
         if packet.data.before_last_in_path == node.get_id():
             # Hear a forward retransmission? Treat it here
@@ -181,11 +165,13 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
                 # For now : do that, as it means we are connected to Gateway.
                 # Remove all planned events, 
                 packet_jitter_info.event_handle.cancel()   
-                node.end_of_followup_pending_schedulable(simulator, packet, any_type_of_followup_received=True, direct_ack_from_gateway = True)
+                packet_jitter_info.set_internal_state(NodeLP_Packet_State.FOLLOWUP_PENDING) # Below can be scheduled as an immediate event, or just executed now.
+                NodeLP_Packet_State.FOLLOWUP_PENDING.value.end_of_followup_pending_schedulable(simulator, node, packet, packet_jitter_info, any_type_of_followup_received=True, direct_ack_from_gateway = True)
 
                 # and treat this packet immediately, starting fresh.
                 if node.RETRANSMIT_BACK_ACKS:
                     node.process_packet(simulator, packet)
+                    return
             else:
                 # "Overheard neighbour" count increase!
                 packet_jitter_info.register_neighbour(packet.data.last_in_path)
@@ -197,26 +183,38 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
                 packet_jitter_info.event_handle.cancel()   
 
                 # decrease jitter and move to DONE(IDLE) state. Note : jitter decrease NOT handled by the function, however jitter increase is.
-                node.end_of_followup_pending_schedulable(simulator, packet, any_type_of_followup_received=True, direct_ack_from_gateway = False)
+                packet_jitter_info.set_internal_state(NodeLP_Packet_State.FOLLOWUP_PENDING) # Below can be scheduled as an immediate event, or just executed now.
+                NodeLP_Packet_State.FOLLOWUP_PENDING.value.end_of_followup_pending_schedulable(simulator, node, packet, packet_jitter_info, any_type_of_followup_received=True, direct_ack_from_gateway = False)
 
         else:
             # Hear a retransmission of said packet but by someone else? Treat it here.
             # For now, until we understand better how to treat packet retransmissions, just increase neighbour count.
             # NOTE : neighbour count is increased at the TOP of the function.
             pass
-
-    def transmit_packet_lp_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
-        raise AssertionError("Followup state unexpected, as it is the transmission event that is supposed to set the state to followup_pending or done/idle")
     
-    def end_of_followup_pending_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
-        raise NotImplementedError("Handle method not implemented")
+    def end_of_followup_pending_schedulable(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
+        """
+        Schedules timeout of followup-pending.
+        It automatically sets event callback to null.
+        :any_type_of_followup_received: means this node was the before-last-in-path of the packet, whether it's an ACK or a message forwarding.
+        TODO : add safeguard mecanism should packet window not be assigned (for whatever coding error there was) allowing to verify this quickly.
+        """
+        if packet_jitter_info.get_internal_state() != NodeLP_Packet_State.FOLLOWUP_PENDING:
+            raise AssertionError("State not expected in scheduled transmission. Event of retransmission should be _canceled_ in the case packet treatment halted")
+
+        if any_type_of_followup_received:
+            # Depending on suppression mode, some value reset is due here.
+            packet_jitter_info.handle_suppression_possible_unset(packet, not direct_ack_from_gateway and node.estimate_jitter_of_next_forwarding_node_within_channel(simulator, node.channel, packet_jitter_info, packet) or -1.0, direct_ack_from_gateway)
+        else:
+            packet_jitter_info.step_increase_jitter()
+            packet_jitter_info.handle_suppression_possible_set(no_followup_heard=True)
+        
+        packet_jitter_info.set_internal_state(NodeLP_Packet_State.IDLE)
+        packet_jitter_info.event_handle = None
+        node.packet_window_free(packet_jitter_info.packet_id_index)
 
 class NodeLP_Done_Handler(NodeLP_BaseState_Handler):
-    def process_packet(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
-        raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
-    def transmit_packet_lp_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
-        raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")    
-    def end_of_followup_pending_schedulable(self, node: 'NodeLP', simulator: 'Simulator', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
+    def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         raise AssertionError("Current implementation assumes DONE and IDLE are the same state for simplicity")
 
 class NodeLP_Packet_State(Enum):
@@ -610,49 +608,7 @@ class NodeLP(Node):
         state_handler = internal_state.get_internal_state_handler()
         self._log("state when received : ", internal_state.internal_state_for_packet)
 
-        state_handler.process_packet(self, simulator, packet, internal_state) # IDLE, RETX, ...
-
-    def transmit_packet_lp_schedulable(self, simulator: 'Simulator', packet: 'PacketLP'):
-        """
-        Schedulable immediate transmission. It checks current state, but its aim is to initite immediate transmission
-        TODO : If the transmission takes time, the node would no longer be able to receive packets, and collision can happen etc etc.
-        """
-        packet_id_index = self.get_packet_window_index(packet)
-
-        if packet_id_index == -1:
-            # This indicates the packet's window got dropped before the scheduled transmission. Not expected.
-            raise AssertionError("Unexpected packet window removal. Please cancel transmission instead.")
-
-        internal_state = self.last_packets_informations[packet_id_index]
-        state_handler = internal_state.get_internal_state_handler()
-
-        # Process transmission schedule treatment depending on state (IDLE, RETXPENDING, ...)
-        state_handler.transmit_packet_lp_schedulable(self, simulator, packet, internal_state)
-
-    def end_of_followup_pending_schedulable(self, simulator: 'Simulator', packet: 'PacketLP', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
-        """
-        Schedules timeout of followup-pending.
-        It automatically sets event callback to null.
-        :any_type_of_followup_received: means this node was the before-last-in-path of the packet, whether it's an ACK or a message forwarding.
-        """
-
-        packet_id_index = self.get_packet_window_index(packet)
-        if packet_id_index == -1:
-            # This indicates the packet's window got dropped before the follow-up timeout : unexpected, raise Alert
-            raise AssertionError("Unexpected packet window removal. There is an error in the code, follow-up timeout cannot be realized.")
-        
-        internal_state = self.last_packets_informations[packet_id_index]
-
-        if any_type_of_followup_received:
-            # Depending on suppression mode, some value reset is due here.
-            internal_state.handle_suppression_possible_unset(packet, not direct_ack_from_gateway and self.estimate_jitter_of_next_forwarding_node_within_channel(simulator, self.channel, internal_state, packet) or -1.0, direct_ack_from_gateway)
-        else:
-            internal_state.step_increase_jitter()
-            internal_state.handle_suppression_possible_set(no_followup_heard=True)
-        
-        internal_state.set_internal_state(NodeLP_Packet_State.IDLE)
-        internal_state.event_handle = None
-        self.packet_window_free(packet_id_index)
+        state_handler.process_packet(simulator, self, packet, internal_state) # IDLE, RETX, ...
 
     def transmit_packet_lp_effective(self, simulator: 'Simulator', packet: 'PacketLP'):
         """
