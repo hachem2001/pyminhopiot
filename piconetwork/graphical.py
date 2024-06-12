@@ -84,8 +84,6 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
 
         marker = markers[node_type]
         color = colors[node_type]
-        
-
 
         ax.scatter(x, y, label=node_type, marker=marker, color=color, s=100)  # s is the size of the marker
         if node_type == 'gateway' or node_type == 'source':
@@ -123,11 +121,11 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     plt.show()
 
 def plot_lpwan_jitter_interval_distribution(nodes: List[NodeLP]):
-    count_per_jitter_interval = [0 for i in range(NodeLP.JitterSuppressionState.JITTER_INTERVALS)]
+    count_per_jitter_interval = [0 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     for node in nodes:
         if isinstance(node, NodeLP):
             count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
-    plt.bar([i+1 for i in range(NodeLP.JitterSuppressionState.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes')
+    plt.bar([i+1 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes')
     plt.legend()
     plt.xlabel('Jitter Interval')
     plt.show()

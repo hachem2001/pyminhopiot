@@ -44,17 +44,18 @@ def node_point_random_picky(x_start, y_start, x_end, y_end, nodes, prohibitive_d
         sys.exit(1)
     return NodeLP(x_point, y_point)
 
-NODES_DENSITY = 1.5 ; assert(NODES_DENSITY > 0.58) # Inspired from percolation density limit before possible connectivity in grid case.
+NODES_DENSITY = 2 ; assert(NODES_DENSITY > 0.58) # Inspired from percolation density limit before possible connectivity in grid case.
 # With node density 7, it takes 1mn10s to just finish the breadthfirstsearch and channel configuration : beware! Very slow simulation.
 # Although, it eventually gets slightly faster as the jitter decreases and some nodes drop instead of forwarding.
 # Modify some innate values for better testing :
-NodeLP.JitterSuppressionState.JITTER_MIN_VALUE = 0.2
-NodeLP.JitterSuppressionState.JITTER_MAX_VALUE = 1.2
-NodeLP.JitterSuppressionState.ADAPTATION_FACTOR = 0.5
-NodeLP.JitterSuppressionState.JITTER_INTERVALS = 10
+NodeLP_Jitter_Configuration.JITTER_MIN_VALUE = 0.2
+NodeLP_Jitter_Configuration.JITTER_MAX_VALUE = 1.2
+NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.5
+NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
+NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.AGGRESSIVE
 
 HEARING_RADIUS = 30.0
-DENSITY_RADIUS = 19.0
+DENSITY_RADIUS = 17.0
 
 x_box_min = 0.0
 x_box_max = 300.0
