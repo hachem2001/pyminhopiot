@@ -61,15 +61,18 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     fig, ax = plt.subplots()
 
     # Define different markers and colors for different types of nodes
-    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1', 'disabled': '2'}
-    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange', 'unengaged': 'black', 'disabled': 'gray'}
+    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1', 'disabled': '2', 'disabled_gw': 's'}
+    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange', 'unengaged': 'black', 'disabled': 'gray', 'disabled_gw': 'gray'}
 
     for node in nodes_list:
         x = node.x
         y = node.y
         node_type = 'node'
         if isinstance(node, GatewayLP):
-            node_type = 'gateway'
+            if node.get_enabled() == False:
+                node_type = 'disabled_gw'
+            else:
+                node_type = 'gateway'
         elif isinstance(node, SourceLP):
             # Check if suppressed or not
                 node_type = 'source'
@@ -127,9 +130,60 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
 def plot_lpwan_jitter_interval_distribution(nodes: List[NodeLP]):
     count_per_jitter_interval = [0 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     for node in nodes:
-        if isinstance(node, NodeLP):
+        if isinstance(node, NodeLP) and node.get_enabled():
             count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
-    plt.bar([i+1 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes')
+    plt.bar([i+1 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes (Exluding Disabled)')
     plt.legend()
     plt.xlabel('Jitter Interval')
+    plt.show()
+
+def plot_delays_of_packet_arrival(delays_of_arrival_source_to_gateway, times_of_arrival_source_to_gateway, times_of_departure_source_to_gateway):
+    # TODO : make the plot per "group of packets emitted at a certain time" instead of the way it is done now
+
+    plt.plot(times_of_departure_source_to_gateway, delays_of_arrival_source_to_gateway, 'ro')
+    plt.xlabel('Time of departure of packet')
+    plt.ylabel('Delay from source to gateway')
+    plt.show()
+
+def plot_helper_lpwan_jitter_recurrent_metric(simulator: 'Simulator', nodes : List['NodeLP'], jitter_distributions, jitter_distributions_timestamps, recurrent_interval : float = 100.0):
+    """
+    For making a graph on evolution of jitter over simulation time 
+    :nodes: List of nodes to keep track of.
+    :jitter_distributions: List!
+    :jitter_distirbutions_timestamps : List as well
+    """
+    count_per_jitter_interval = [0 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
+    for node in nodes:
+        if isinstance(node, NodeLP) and node.get_enabled():
+            count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
+    jitter_distributions.append(list(count_per_jitter_interval))
+    jitter_distributions_timestamps.append(simulator.get_current_time())
+    simulator.schedule_event(recurrent_interval, plot_helper_lpwan_jitter_recurrent_metric, nodes, jitter_distributions, jitter_distributions_timestamps, recurrent_interval = recurrent_interval)
+
+def plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions, recurrent_interval : float = 100.0,):
+    # Each jitter interval has its label and gets plotted as a bar graph
+    fig, ax = plt.subplots()
+
+    plot_bars_drawn = []
+    bottom = [0 for i in range(len(jitter_distributions_timestamps))]
+    for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS):
+
+        to_be_filled = []
+        for j in range(len(jitter_distributions_timestamps)):
+            to_be_filled.append(jitter_distributions[j][i])
+        
+        plot_bars_drawn.append(plt.bar(jitter_distributions_timestamps, to_be_filled, bottom=bottom, width=recurrent_interval*0.9))
+        
+        for j in range(len(jitter_distributions_timestamps)):
+            bottom[j] += jitter_distributions[j][i]
+
+    
+    handles = [plot_bars_drawn[i][0] for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
+    labels = [i for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
+    ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
+
+    plt.xlabel('Time Stamp')
+    plt.tight_layout()
+    fig.subplots_adjust(right=0.8)  # Adjust right to make space for the legend
+
     plt.show()

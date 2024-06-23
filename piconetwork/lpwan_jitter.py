@@ -641,6 +641,10 @@ class GatewayLP(NodeLP):
         super().__init__(x, y, channel)
         super(Node, self).__init__(logger=GATEWAY_LOGGER, preamble=str(self.node_id)+" - ")
 
+    def arrival_successful_callback(self, simulator: 'Simulator', packet: 'PacketLP'):
+        # A function to be modified if in scripts should we want to log something specific at packet arrival.
+        pass
+
     def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
         """
         Processing of packets reaching the gateway.
@@ -649,11 +653,14 @@ class GatewayLP(NodeLP):
         # GATEWAY_LOGGER.log(f"Gateway {self.node_id} captured packet: {packet}")
         # Schedule ACK message
         # NOTE : Here it is not scheduled but immediate ...
-        # Log time it took the packet to arrive
-        self._log(f"captured packet: {packet}")
-        self._log(f"source-to-gateway time for packet {packet.data.packet_id} is {(simulator.get_current_time() - packet.first_emission_time):.2f}, passing through {len(packet.path)-1} intermediate hops.")
-        if not packet.data.ack:
-            self.send_ack(simulator, packet)
+        # Log time it took the packet to 
+        if self.enabled:
+            self._log(f"captured packet: {packet}")
+            self._log(f"source-to-gateway time for packet {packet.data.packet_id} is {(simulator.get_current_time() - packet.first_emission_time):.2f}, passing through {len(packet.path)-1} intermediate hops.")
+            self.arrival_successful_callback(simulator, packet) # User-defined callback, if ever
+
+            if not packet.data.ack:
+                self.send_ack(simulator, packet)
 
     def send_ack(self, simulator: 'Simulator', in_packet: 'PacketLP'):
         """
@@ -682,12 +689,14 @@ class SourceLP(NodeLP):
         # Don't add simulator as arg, added by default.
 
     def process_packet(self, simulator: Simulator, packet: PacketLP):
-        # Drop packets.
-        if packet.data.ack:
-            self._log(f"received ack for packet_id: {packet.data.ack[1]}, packet: {packet}")
-        return
+        if self.enabled:
+            # Drop packets.
+            if packet.data.ack:
+                self._log(f"received ack for packet_id: {packet.data.ack[1]}, packet: {packet}")
+            return
 
     def send_packet(self, simulator: Simulator):
-        packet = PacketLP(self.get_id(), first_emission_time=simulator.get_current_time(), ack = False)
-        self._log(f"sending packet: {packet}")
-        self.broadcast_packet(simulator, packet)
+        if self.enabled:
+            packet = PacketLP(self.get_id(), first_emission_time=simulator.get_current_time(), ack = False)
+            self._log(f"sending packet: {packet}")
+            self.broadcast_packet(simulator, packet)

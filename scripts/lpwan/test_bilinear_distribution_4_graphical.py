@@ -1,7 +1,7 @@
 from piconetwork.lpwan_jitter import *
 import sys
 import nographs
-from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution; import matplotlib.pyplot as plt
+from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution, plot_helper_lpwan_jitter_recurrent_metric, plot_lpwan_jitter_metrics; import matplotlib.pyplot as plt
 import threading
 
 """
@@ -9,8 +9,7 @@ Distribution of nodes over a strip, test.
 """
 
 # Interesting config : 5, 30.0, 19.0
-
-random.seed(5)
+random.seed(6)
 
 # Set loggers
 EVENT_LOGGER.set_verbose(False); EVENT_LOGGER.set_effective(False)
@@ -44,7 +43,7 @@ def node_point_random_picky(x_start, y_start, x_end, y_end, nodes, prohibitive_d
         sys.exit(1)
     return NodeLP(x_point, y_point)
 
-NODES_DENSITY = 2 ; assert(NODES_DENSITY > 0.58) # Inspired from percolation density limit before possible connectivity in grid case.
+NODES_DENSITY = 1.5 ; assert(NODES_DENSITY > 0.58) # Inspired from percolation density limit before possible connectivity in grid case.
 # With node density 7, it takes 1mn10s to just finish the breadthfirstsearch and channel configuration : beware! Very slow simulation.
 # Although, it eventually gets slightly faster as the jitter decreases and some nodes drop instead of forwarding.
 # Modify some innate values for better testing :
@@ -54,13 +53,17 @@ NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.6
 NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
 NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
 
+# SIMULATION DURATION
+SIMULATION_DURATION = 300
+SIMULATION_DISABLE_BRANCH_TIMESTAMP = 150
+
 HEARING_RADIUS = 30.0
-DENSITY_RADIUS = 19.0
+DENSITY_RADIUS = 15.0
 
 x_box_min = 0.0
-x_box_max = 300.0
-y_box_min = -150.0
-y_box_max = 150.0
+x_box_max = 600.0
+y_box_min = -400.0
+y_box_max = 400.0
 
 x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_max
@@ -78,8 +81,10 @@ while total_surface_no_clamp < box_surface_max * NODES_DENSITY:
     total_surface_no_clamp += ((DENSITY_RADIUS) ** 2) * math.pi
     nodes.append(node_point_random_picky(x_box_min, y_box_min, x_box_max, y_box_max, nodes, DENSITY_RADIUS))
 
-gateway = GatewayLP(x_box_max, (y_box_max+y_box_min)/2.0)
-nodes.append(gateway)
+gateway_1 = GatewayLP(x_box_max, (y_box_max*4.0+y_box_min)/5.0)
+gateway_2 = GatewayLP(x_box_max, (y_box_max+y_box_min*4.0)/5.0)
+nodes.append(gateway_1)
+nodes.append(gateway_2)
 
 # Create channel
 channel = Channel(packet_delay_per_unit=0.001) # If delay per unit is too high, it will mess up all calculations. TODO : fix that.
@@ -107,17 +112,17 @@ repetitions_of_updates = 20
 traversal = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source.get_id())
 depths = {vertex: traversal.depth for vertex in traversal.go_for_depth_range(0, len(nodes))}
 
-if gateway.get_id() not in depths.keys():
+if (gateway_1.get_id() not in depths.keys()) or (gateway_2.get_id() not in depths.keys()):
     print("No possible path from source to gateway. Abort!")
     sys.exit(0)
 else:
-    print("Path from source to gateway exists, with BreadthFirstSearch depth :", depths[gateway.get_id()])
+    print("Path from source to gateway exists, with BreadthFirstSearch depth :", depths[gateway_1.get_id()])
 
 # Useful DEBUG notes
 print("Number of source neighbours : ", len(channel.adjacencies_per_node[source.get_id()]))
 
 # Example usage:
-sim = Simulator(800, 0.00001)
+sim = Simulator(SIMULATION_DURATION, 0.00001)
 
 # Assign simulator for every logger we want to keep track of time for
 for node in nodes:
@@ -126,14 +131,38 @@ for node in nodes:
 # Add nodes to simulator
 sim.add_nodes(*nodes)
 
+# DRAW AND SIMULATE
+
+x_box_min, x_box_max, y_box_min, y_box_max = min([node.x for node in nodes]), max([node.x for node in nodes]), min([node.y for node in nodes]), max([node.y for node in nodes])
+x_width = x_box_max - x_box_min
+y_height = y_box_max - y_box_min
+
+def disable_upped_end(simulator: 'Simulator'):
+    gateway_1.set_enabled(False)
+
+def draw_graphs(simulator: 'Simulator'):
+    plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+    plot_lpwan_jitter_interval_distribution(nodes)
+
+jitter_distributions = [] # An element is a list of JITTER_INTERVALS elements, and corresponds to corresponding time stamp
+jitter_distributions_timestamps = []
+
 # Start sending packets from source
 source.start_sending(sim)
 
-plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-plot_lpwan_jitter_interval_distribution(nodes)
+# Enable recurrent metrics
+plot_helper_lpwan_jitter_recurrent_metric(sim, nodes, jitter_distributions, jitter_distributions_timestamps)
+#draw_graphs(sim)
+
+#sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP-1, draw_graphs)
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP, disable_upped_end)
+#sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP+1, draw_graphs)
 
 # Run the simulator
 sim.run()
 
-plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-plot_lpwan_jitter_interval_distribution(nodes)
+# End of simulation : draw graphs
+#draw_graphs(sim)
+
+# Draw jitter bar plot distribution from recurrent metrics
+plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions)
