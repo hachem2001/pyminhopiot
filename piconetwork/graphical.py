@@ -61,8 +61,8 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     fig, ax = plt.subplots()
 
     # Define different markers and colors for different types of nodes
-    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1', 'disabled': '2', 'disabled_gw': 's'}
-    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange', 'unengaged': 'black', 'disabled': 'gray', 'disabled_gw': 'gray'}
+    markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1', 'disabled': '2', 'disabled_gw': 's', 'disabled_sr': 'o'}
+    colors = {'source': 'blue', 'gateway': 'red', 'node': 'green', 'suppressed': 'orange', 'unengaged': 'black', 'disabled': 'gray', 'disabled_gw': 'gray', 'disabled_sr': 'gray'}
 
     for node in nodes_list:
         x = node.x
@@ -75,6 +75,9 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
                 node_type = 'gateway'
         elif isinstance(node, SourceLP):
             # Check if suppressed or not
+            if node.get_enabled() == False:
+                node_type = 'disabled_sr'
+            else:
                 node_type = 'source'
         else:
             suppression_mode = node.last_packets_informations[0].suppression_mode

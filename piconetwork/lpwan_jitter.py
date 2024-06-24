@@ -57,12 +57,12 @@ class PacketLP(Packet):
             self.packet_id = packet_id
             self.source_id = source_id
             self.last_in_path = source_id
-            self.before_last_in_path = before_last_in_path # TODO : TEMPORARY FIX FOR "FORWARDED PACKET" DETERMINISTIC DETECTION. TO BE FIXED LATER 
+            self.before_last_in_path = before_last_in_path # TODO : TEMPORARY FIX FOR "FORWARDED PACKET" DETERMINISTIC DETECTION. TO BE FIXED LATER
             self.ack = ack
-        
+
         def __repr__(self) -> str:
             return f'<{type(self)}{{{self.packet_id},{self.source_id},{self.last_in_path},{self.before_last_in_path},{self.ack}}}>'
-        
+
     def __init__(self, source_id: int, first_emission_time:float = -1, ack : (bool, int)= (False, -1), before_last_in_path = -1):
         """
         Re-insisting : "source_id" would be the gateway's ID if the
@@ -74,7 +74,7 @@ class PacketLP(Packet):
 
     def get_id(self):
         return self.data.packet_id
-    
+
     def get_source_id(self):
         return self.data.source_id
 
@@ -90,7 +90,7 @@ class NodeLP_BaseState_Handler():
 
     A NodeLP packet handler _must_ define these states by default. 
     """
-    
+
     def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         """ Process first-arriving packet """
         raise NotImplementedError("Handle method not implemented")
@@ -103,7 +103,7 @@ class NodeLP_Idle_Handler(NodeLP_BaseState_Handler):
             packet_jitter_info.step_reduce_jitter()
             if not node.RETRANSMIT_BACK_ACKS:
                 return
-        
+
         # Schedule transmission. Save event handle should the event be cancelled (e.g ack received)
         packet_jitter_info.set_internal_state(NodeLP_Packet_State.RETX_PENDING) # USE NodeLP_Packet_State.RETX_PENDING.value below, or else "self" wouldn't be passed.
         event = simulator.schedule_event(packet_jitter_info.get_jitter_random(), NodeLP_Packet_State.RETX_PENDING.value.transmit_packet_lp_schedulable, node, packet, packet_jitter_info)
@@ -112,12 +112,12 @@ class NodeLP_Idle_Handler(NodeLP_BaseState_Handler):
 class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
     def process_packet(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration'):
         # Count neighbours or cancel scheduled retransmission
-        possibility_1 = packet.data.ack and packet_jitter_info.packet_id != packet.get_id() # Overhearing gateway acknowledgement : suppress transmission, as well as reduce jitter
+        possibility_1 = packet.data.ack and packet_jitter_info.packet_message_id == node.get_packet_message_id(packet) and packet_jitter_info.packet_id != packet.get_id() # Overhearing gateway acknowledgement (from gateway!) (for current packet/message id!) : suppress transmission, as well as reduce jitter
         possibility_2 = packet_jitter_info.suppression_mode == NodeLP_Suppression_Mode.BOLD and packet.data.before_last_in_path == packet_jitter_info.id_node_antecessor_of_last_packet_forwarded # A n+1 retransmission of the message already occurred
-        
+
         if possibility_1: # Reduce jitter
             packet_jitter_info.step_reduce_jitter()
-        
+
         if possibility_1 or possibility_2: # Cancel retransmission event and go back to IDLE. (can't believe I missed this.)
             packet_jitter_info.event_handle.cancel()
             packet_jitter_info.handle_possible_suppression_set_or_unset()
@@ -178,9 +178,9 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
 
                 # Forward Delay Adaptation
                 packet_jitter_info.adapt_jitter(node.estimate_jitter_of_next_forwarding_node_within_channel(simulator, node.channel, packet_jitter_info, packet))
-                
+
                 # Then remove all planned events,
-                packet_jitter_info.event_handle.cancel()   
+                packet_jitter_info.event_handle.cancel()
 
                 # decrease jitter and move to DONE(IDLE) state. Note : jitter decrease NOT handled by the function, however jitter increase is.
                 packet_jitter_info.set_internal_state(NodeLP_Packet_State.FOLLOWUP_PENDING) # Below can be scheduled as an immediate event, or just executed now.
@@ -191,7 +191,7 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
             # For now, until we understand better how to treat packet retransmissions, just increase neighbour count.
             # NOTE : neighbour count is increased at the TOP of the function.
             pass
-    
+
     def end_of_followup_pending_schedulable(self, simulator: 'Simulator', node: 'NodeLP', packet: 'PacketLP', packet_jitter_info: 'NodeLP_Jitter_Configuration', any_type_of_followup_received:bool = False, direct_ack_from_gateway:bool = False):
         """
         Schedules timeout of followup-pending.
@@ -208,7 +208,7 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
         else:
             packet_jitter_info.step_increase_jitter()
             packet_jitter_info.handle_possible_suppression_set_or_unset(no_followup_heard_set=True)
-        
+
         packet_jitter_info.set_internal_state(NodeLP_Packet_State.IDLE)
         packet_jitter_info.event_handle = None
         packet_jitter_info.handle_possible_suppression_set_or_unset()
@@ -259,7 +259,7 @@ class NodeLP_Jitter_Configuration:
     ADAPTATION_FACTOR = 0.5 # Value in interval (0,1]
     JITTER_MIN_VALUE = 0.2
     JITTER_MAX_VALUE = 1.2
-    JITTER_INTERVALS = 50 # Number of intervals to divide the jitter to.
+    JITTER_INTERVALS = 10 # Number of intervals to divide the jitter to.
     # This corresponds to [0.2, 0.3], [0.3, 0.4], ... [1.1, 1.2]
 
     # Suppression default values
@@ -282,7 +282,7 @@ class NodeLP_Jitter_Configuration:
         self.internal_state_for_packet_handler : NodeLP_BaseState_Handler = NodeLP_Idle_Handler()
 
         # Packet tracking related information
-        self.packet_message_id = packet_message_id 
+        self.packet_message_id = packet_message_id
         self.packet_id = packet_id
         self.source_id = source_id
 
@@ -318,7 +318,7 @@ class NodeLP_Jitter_Configuration:
             self.source_id = source_id
         if antecessor_id != False:
             self.antecessor_id = antecessor_id
-        
+
         # Reset event handle
         self.event_handle = None
 
@@ -342,7 +342,7 @@ class NodeLP_Jitter_Configuration:
     def register_neighbour(self, neighbour_id: int) -> bool:
         if neighbour_id in self.neighbours_noted and self.get_neighbours_count() < self.MAX_NUMBER_OF_NEIGHBOUR_IDS_STORABLE:
             return False
-        
+
         self.neighbours_noted.add(neighbour_id)
         return True
 
@@ -362,7 +362,7 @@ class NodeLP_Jitter_Configuration:
     def get_internal_state(self) -> NodeLP_Packet_State:
         """ Returns the enum internal state of packet """
         return self.internal_state_for_packet
-    
+
     def get_internal_state_handler(self) -> NodeLP_BaseState_Handler:
         """ Returns handler for state (IDLE, RETXPENDING, ...) """
         return self.internal_state_for_packet_handler
@@ -374,7 +374,7 @@ class NodeLP_Jitter_Configuration:
     def get_min_jitter(self) -> float:
         """ Get the minimum jitter of the state. """
         return self.min_jitter * self._JITTER_INTERVAL_DURATION() + self.JITTER_MIN_VALUE
-        
+
     def get_jitter_random(self) -> float:
         """
         Return a random variable between jitter min and jitter max, as per the paper description.
@@ -387,7 +387,7 @@ class NodeLP_Jitter_Configuration:
 
     def get_jitter_average(self) -> float:
         """ Returns the estimated average of the jitter used by this node """
-        jitter = (self.get_max_jitter() + self.get_min_jitter())/2 
+        jitter = (self.get_max_jitter() + self.get_min_jitter())/2
         return jitter
 
     def set_jitter_interval_around(self, jitter):
@@ -467,7 +467,7 @@ class NodeLP_Jitter_Configuration:
             self.set_suppression_mode(self.SUPPRESSION_MODE_SWITCH)
         else:
             pass # Do nothing I guess! Keep it as it is. Although this is impossible to reach, self.max_jitter can't not be == or != at the same time
-    
+
 class NodeLP(Node):
     """
     Implementation following paper.
@@ -504,7 +504,7 @@ class NodeLP(Node):
 
     def set_enabled(self, bl: bool):
         self.enabled = bl
-    
+
     def get_enabled(self) -> bool:
         return self.enabled
 
@@ -515,7 +515,7 @@ class NodeLP(Node):
         Here we also cheat by asking the channel how long it takes to get to said node.
         TODO: Fix this cheaty case?
         """
-        
+
         twottimestimeofarrivalplusjitter = simulator.get_current_time() - internal_state.retransmission_time
         channelestimatedtimeofarrival = channel.get_time_delay(self.get_id(), packet.data.last_in_path)
         return twottimestimeofarrivalplusjitter - 2 * channelestimatedtimeofarrival
@@ -539,11 +539,11 @@ class NodeLP(Node):
         packet_id_index = -1
 
         try:
-            
+
             packet_id_index = self.last_packets_treated.index(packet_id)
         except ValueError:
             packet_id_index = -1
-        
+
         return packet_id_index
 
     def packet_window_register(self, packet:'PacketLP') -> Tuple[bool, int]:
@@ -585,14 +585,14 @@ class NodeLP(Node):
                 # Different jitter per packet in packet capacity? TODO : TBS + assign packet depending on source in the list.
         else:
             return (True, packet_id_index)
-    
+
     def packet_window_free(self, window_id_index):
         """
         Marks the window as free, allowing it to be used. Does not remove the internal state parameters, should they be re-used.
         """
 
         assert(window_id_index>=0 and window_id_index<self.PACKETS_STATE_CAPACITY)
-        if self.last_packets_treated[window_id_index] != -1: 
+        if self.last_packets_treated[window_id_index] != -1:
             self.remaining_capacity += 1
             self.last_packets_treated[window_id_index] = -1
 
@@ -605,7 +605,7 @@ class NodeLP(Node):
         # If disabled node : do not process
         if not self.enabled:
             return
-        
+
         # First : is packet in list of being_treated_packets ?
         packet_id = self.get_packet_message_id(packet)
         packet_id_index = self.get_packet_window_index(packet)
@@ -640,6 +640,7 @@ class GatewayLP(NodeLP):
     def __init__(self, x: float, y: float, channel: 'Channel' = None ):
         super().__init__(x, y, channel)
         super(Node, self).__init__(logger=GATEWAY_LOGGER, preamble=str(self.node_id)+" - ")
+        self.acknowledged_packets = set()
 
     def arrival_successful_callback(self, simulator: 'Simulator', packet: 'PacketLP'):
         # A function to be modified if in scripts should we want to log something specific at packet arrival.
@@ -654,7 +655,8 @@ class GatewayLP(NodeLP):
         # Schedule ACK message
         # NOTE : Here it is not scheduled but immediate ...
         # Log time it took the packet to 
-        if self.enabled:
+        if self.enabled and not packet.get_id() in self.acknowledged_packets:
+            self.acknowledged_packets.add(packet.get_id()) # Only acknowledge packets once
             self._log(f"captured packet: {packet}")
             self._log(f"source-to-gateway time for packet {packet.data.packet_id} is {(simulator.get_current_time() - packet.first_emission_time):.2f}, passing through {len(packet.path)-1} intermediate hops.")
             self.arrival_successful_callback(simulator, packet) # User-defined callback, if ever

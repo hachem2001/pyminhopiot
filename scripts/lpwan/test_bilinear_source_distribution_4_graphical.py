@@ -1,7 +1,7 @@
 from piconetwork.lpwan_jitter import *
 import sys
 import nographs
-from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution, plot_lpwan_jitter_metrics, plot_delays_of_packet_arrival; import matplotlib.pyplot as plt
+from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution, plot_helper_lpwan_jitter_recurrent_metric, plot_lpwan_jitter_metrics; import matplotlib.pyplot as plt
 import threading
 
 """
@@ -18,18 +18,6 @@ NODE_LOGGER.set_verbose(False) ; NODE_LOGGER.set_effective(False)
 SIMULATOR_LOGGER.set_verbose(False) ; SIMULATOR_LOGGER.set_effective(False)
 SOURCE_LOGGER.set_verbose(True) ; SOURCE_LOGGER.set_effective(False)
 CHANNEL_LOGGER.set_verbose(False) ; CHANNEL_LOGGER.set_effective(False)
-
-
-# Subclass GatewayLP to add our own average time delay followup of ToA of packets to gateways from source
-delays_of_arrival_source_to_gateway = [] # The lists are self explanatory in name.
-times_of_arrival_source_to_gateway = []
-times_of_departure_source_to_gateway = []
-
-class GatewayLP_mod(GatewayLP):
-    def arrival_successful_callback(self, simulator: 'Simulator', packet: 'PacketLP'):
-        times_of_arrival_source_to_gateway.append(simulator.get_current_time())
-        times_of_departure_source_to_gateway.append(packet.first_emission_time)
-        delays_of_arrival_source_to_gateway.append(-packet.first_emission_time + simulator.get_current_time())
 
 def node_point_random_picky(x_start, y_start, x_end, y_end, nodes, prohibitive_distance:float):
     """ Similar to the other version of the test, except it keeps trying to find random position when node is too close to another one """
@@ -65,7 +53,10 @@ NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.6
 NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
 NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
 
-SIMULATION_TOTAL_DURATION = 2500
+# SIMULATION DURATION
+SIMULATION_DURATION = 2000
+SIMULATION_DISABLE_BRANCH_TIMESTAMP = 1000
+
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 15.0
 
@@ -80,8 +71,11 @@ y_height = y_box_max - y_box_max
 box_surface_max = (y_box_max - y_box_min) * (x_box_max - x_box_min)
 nodes = []
 
-source = SourceLP(x_box_min , (y_box_max+y_box_min)/2.0, 25)
-nodes.append(source)
+source_1 = SourceLP(x_box_min , (y_box_max*4.0+y_box_min)/5.0, 23)
+source_2 = SourceLP(x_box_min , (y_box_max+y_box_min*4.0)/5.0, 29)
+
+nodes.append(source_1)
+nodes.append(source_2)
 
 # Add nodes until full density with regards to "surface of possible hearing" matches with NODES_DENSITY.
 total_surface_no_clamp = 0.0
@@ -90,7 +84,7 @@ while total_surface_no_clamp < box_surface_max * NODES_DENSITY:
     total_surface_no_clamp += ((DENSITY_RADIUS) ** 2) * math.pi
     nodes.append(node_point_random_picky(x_box_min, y_box_min, x_box_max, y_box_max, nodes, DENSITY_RADIUS))
 
-gateway = GatewayLP_mod(x_box_max, (y_box_max+y_box_min)/2.0)
+gateway = GatewayLP(x_box_max, (y_box_max+y_box_min)/2.0)
 nodes.append(gateway)
 
 # Create channel
@@ -99,21 +93,36 @@ channel = Channel(packet_delay_per_unit=0.001) # If delay per unit is too high, 
 # Register all nodes to channel
 channel.create_metric_mesh(HEARING_RADIUS, *nodes)
 
-# Check path existence with NoGraphs library
-traversal = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source.get_id())
-depths = {vertex: traversal.depth for vertex in traversal.go_for_depth_range(0, len(nodes))}
+def recurrent_plot_nodes_lpwan(nodes: List['NodeLP'], channel : 'Channel', x_min, y_min, x_max, y_max, interval, repetitions):
 
-if gateway.get_id() not in depths.keys():
-    print("No possible path from source to gateway. Abort!")
+    for _ in range(repetitions):
+        time.sleep(interval)
+
+        plt.close('all')
+        plt.ion()
+        plot_nodes_lpwan(nodes, channel, x_min, y_min, x_max, y_max)
+        plt.pause(interval)  # Pause to update the plot
+
+# Plot the graph
+update_interval_in_seconds = 1.5
+repetitions_of_updates = 20
+#plotting_thread = threading.Thread(target=recurrent_plot_nodes_lpwan, args=(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05, update_interval_in_seconds, repetitions_of_updates))
+#plotting_thread.start()
+
+# Check path existence with NoGraphs library
+traversal_1 = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source_1.get_id())
+traversal_2 = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source_2.get_id())
+depths_1 = {vertex: traversal_1.depth for vertex in traversal_1.go_for_depth_range(0, len(nodes))}
+depths_2 = {vertex: traversal_2.depth for vertex in traversal_2.go_for_depth_range(0, len(nodes))}
+
+if (gateway.get_id() not in depths_1.keys()) or (gateway.get_id() not in depths_2.keys()):
+    print("No possible path from one of the sources to gateway. Abort!")
     sys.exit(0)
 else:
-    print("Path from source to gateway exists, with BreadthFirstSearch depth :", depths[gateway.get_id()])
-
-# Useful DEBUG notes
-print("Number of source neighbours : ", len(channel.adjacencies_per_node[source.get_id()]))
+    print("Paths from sources to gateway exists, with BreadthFirstSearch depths :", depths_1[gateway.get_id()], depths_2[gateway.get_id()])
 
 # Example usage:
-sim = Simulator(SIMULATION_TOTAL_DURATION, 0.00001)
+sim = Simulator(SIMULATION_DURATION, 0.00001)
 
 # Assign simulator for every logger we want to keep track of time for
 for node in nodes:
@@ -122,16 +131,39 @@ for node in nodes:
 # Add nodes to simulator
 sim.add_nodes(*nodes)
 
-# Start sending packets from source
-source.start_sending(sim)
+# DRAW AND SIMULATE
 
-plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-plot_lpwan_jitter_interval_distribution(nodes)
+x_box_min, x_box_max, y_box_min, y_box_max = min([node.x for node in nodes]), max([node.x for node in nodes]), min([node.y for node in nodes]), max([node.y for node in nodes])
+x_width = x_box_max - x_box_min
+y_height = y_box_max - y_box_min
+
+def disable_upped_end(simulator: 'Simulator'):
+    source_1.set_enabled(False)
+
+def draw_graphs(simulator: 'Simulator'):
+    plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+    plot_lpwan_jitter_interval_distribution(nodes)
+
+jitter_distributions = [] # An element is a list of JITTER_INTERVALS elements, and corresponds to corresponding time stamp
+jitter_distributions_timestamps = []
+
+# Start sending packets from sources
+source_1.start_sending(sim)
+source_2.start_sending(sim)
+
+# Enable recurrent metrics
+plot_helper_lpwan_jitter_recurrent_metric(sim, nodes, jitter_distributions, jitter_distributions_timestamps)
+draw_graphs(sim)
+
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP-1, draw_graphs)
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP, disable_upped_end)
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP+1, draw_graphs)
 
 # Run the simulator
 sim.run()
 
-plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-plot_lpwan_jitter_interval_distribution(nodes)
+# End of simulation : draw graphs
+draw_graphs(sim)
 
-plot_delays_of_packet_arrival(delays_of_arrival_source_to_gateway, times_of_arrival_source_to_gateway, times_of_departure_source_to_gateway)
+# Draw jitter bar plot distribution from recurrent metrics
+plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions)

@@ -54,8 +54,8 @@ NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
 NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
 
 # SIMULATION DURATION
-SIMULATION_DURATION = 300
-SIMULATION_DISABLE_BRANCH_TIMESTAMP = 150
+SIMULATION_DURATION = 2000
+SIMULATION_DISABLE_BRANCH_TIMESTAMP = 1000
 
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 15.0
@@ -92,7 +92,7 @@ channel = Channel(packet_delay_per_unit=0.001) # If delay per unit is too high, 
 # Register all nodes to channel
 channel.create_metric_mesh(HEARING_RADIUS, *nodes)
 
-def recurrent_plot_nodes_lpwan(nodes: 'NodeLP', channel : 'Channel', x_min, y_min, x_max, y_max, interval, repetitions):
+def recurrent_plot_nodes_lpwan(nodes: List['NodeLP'], channel : 'Channel', x_min, y_min, x_max, y_max, interval, repetitions):
 
     for _ in range(repetitions):
         time.sleep(interval)
@@ -152,17 +152,17 @@ source.start_sending(sim)
 
 # Enable recurrent metrics
 plot_helper_lpwan_jitter_recurrent_metric(sim, nodes, jitter_distributions, jitter_distributions_timestamps)
-#draw_graphs(sim)
+draw_graphs(sim)
 
-#sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP-1, draw_graphs)
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP-1, draw_graphs)
 sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP, disable_upped_end)
-#sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP+1, draw_graphs)
+sim.schedule_event(SIMULATION_DISABLE_BRANCH_TIMESTAMP+1, draw_graphs)
 
 # Run the simulator
 sim.run()
 
 # End of simulation : draw graphs
-#draw_graphs(sim)
+draw_graphs(sim)
 
 # Draw jitter bar plot distribution from recurrent metrics
 plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions)
