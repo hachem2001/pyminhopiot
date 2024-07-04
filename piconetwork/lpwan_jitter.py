@@ -115,6 +115,10 @@ class NodeLP_Retxpending_Handler(NodeLP_BaseState_Handler):
         possibility_1 = packet.data.ack and packet_jitter_info.packet_message_id == node.get_packet_message_id(packet) and packet_jitter_info.packet_id != packet.get_id() # Overhearing gateway acknowledgement (from gateway!) (for current packet/message id!) : suppress transmission, as well as reduce jitter
         possibility_2 = packet_jitter_info.suppression_mode == NodeLP_Suppression_Mode.BOLD and packet.data.before_last_in_path == packet_jitter_info.id_node_antecessor_of_last_packet_forwarded # A n+1 retransmission of the message already occurred
 
+        if packet_jitter_info.packet_message_id == node.get_packet_message_id(packet):
+            # "Overheard neighbour" count increase!
+            packet_jitter_info.register_neighbour(packet.data.last_in_path)
+
         if possibility_1: # Reduce jitter
             packet_jitter_info.step_reduce_jitter()
 
@@ -174,7 +178,7 @@ class NodeLP_Followuppending_Handler(NodeLP_BaseState_Handler):
                     return
             else:
                 # "Overheard neighbour" count increase!
-                packet_jitter_info.register_neighbour(packet.data.last_in_path)
+                # packet_jitter_info.register_neighbour(packet.data.last_in_path)
 
                 # Forward Delay Adaptation
                 packet_jitter_info.adapt_jitter(node.estimate_jitter_of_next_forwarding_node_within_channel(simulator, node.channel, packet_jitter_info, packet))
@@ -317,7 +321,7 @@ class NodeLP_Jitter_Configuration:
         if source_id != False:
             self.source_id = source_id
         if antecessor_id != False:
-            self.antecessor_id = antecessor_id
+            self.id_node_antecessor_of_last_packet_forwarded = antecessor_id
 
         # Reset event handle
         self.event_handle = None
@@ -539,7 +543,6 @@ class NodeLP(Node):
         packet_id_index = -1
 
         try:
-
             packet_id_index = self.last_packets_treated.index(packet_id)
         except ValueError:
             packet_id_index = -1

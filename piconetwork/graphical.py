@@ -140,10 +140,10 @@ def plot_lpwan_jitter_interval_distribution(nodes: List[NodeLP]):
     plt.xlabel('Jitter Interval')
     plt.show()
 
-def plot_delays_of_packet_arrival(delays_of_arrival_source_to_gateway, times_of_arrival_source_to_gateway, times_of_departure_source_to_gateway):
+def plot_delays_of_packet_arrival(delays_of_arrival_source_to_gateway, times_of_arrival_source_to_gateway, times_of_departure_source_to_gateway, connect : bool = False):
     # TODO : make the plot per "group of packets emitted at a certain time" instead of the way it is done now
 
-    plt.plot(times_of_departure_source_to_gateway, delays_of_arrival_source_to_gateway, 'ro')
+    plt.plot(times_of_departure_source_to_gateway, delays_of_arrival_source_to_gateway, connect and 'r' or 'ro')
     plt.xlabel('Time of departure of packet')
     plt.ylabel('Delay from source to gateway')
     plt.show()
@@ -163,7 +163,7 @@ def plot_helper_lpwan_jitter_recurrent_metric(simulator: 'Simulator', nodes : Li
     jitter_distributions_timestamps.append(simulator.get_current_time())
     simulator.schedule_event(recurrent_interval, plot_helper_lpwan_jitter_recurrent_metric, nodes, jitter_distributions, jitter_distributions_timestamps, recurrent_interval = recurrent_interval)
 
-def plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions, recurrent_interval : float = 100.0,):
+def plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributions, recurrent_interval : float = 100.0):
     # Each jitter interval has its label and gets plotted as a bar graph
     fig, ax = plt.subplots()
 

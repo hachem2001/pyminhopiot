@@ -71,8 +71,8 @@ DENSITY_RADIUS = 15.0
 
 x_box_min = 0.0
 x_box_max = 600.0
-y_box_min = -400.0
-y_box_max = 400.0
+y_box_min = -200.0
+y_box_max = 200.0
 
 x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_max
