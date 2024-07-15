@@ -1,3 +1,5 @@
+import heapq
+
 from .main import *
 from .packet import Packet
 from .logger import Logger
@@ -484,9 +486,12 @@ class NodeLP(Node):
 
     PACKETS_STATE_CAPACITY = 1 # Can only keep track of one.
 
+    PACKETS_REMEMBER_CAPACITY = 5 # Amount of packet ids that the node remembers in order not to retreat the same packet twice.
+
     RETRANSMIT_BACK_ACKS = False # If we try to send the Ack back to source.
 
     DISSALLOW_MULTIPLE_RETRANSMISSIONS = True # If the same packet_id can be reassigned to the same window as before. can happen in some "ping pong" situations
+
 
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
         super().__init__(x, y, channel)
@@ -497,6 +502,9 @@ class NodeLP(Node):
 
         # Internal state variables for each packet in capacity of being treated.
         self.last_packets_informations = [NodeLP_Jitter_Configuration(packet_id_index=i) for i in range(NodeLP.PACKETS_STATE_CAPACITY)]
+
+        # Cycling stack or heap for last treated packets
+        self.last_packets_remembered = [] # USED WITH heapq MODULE : retains just the packet IDs of the last
 
         # TODO : Assignment to whichever internal state is kind of random here. It should therefore depend on the source_id in priority.
 
@@ -569,14 +577,21 @@ class NodeLP(Node):
                 # Not Opted Yet : TODO
                 return (False, -1)
             else:
-
                 # Assign the packet to the first slot
                 packet_id_index = self.last_packets_treated.index(-1) # If error arises, it shouldn't. So there is a problem with the code.
 
                 if NodeLP.DISSALLOW_MULTIPLE_RETRANSMISSIONS:
-                        # To disallow "PING-PONG situations". TODO : be careful about packet_message_id and packet_id
-                        if self.last_packets_informations[packet_id_index].packet_message_id == packet_id:
-                            return (False, packet_id_index)
+                    if self.last_packets_informations[packet_id_index].packet_message_id == packet_id:
+                        return (False, packet_id_index)
+
+                    if packet_id in self.last_packets_remembered:
+                        return (False, packet_id_index)
+                    else:
+                        if len(self.last_packets_remembered) == self.PACKETS_REMEMBER_CAPACITY:
+                            heapq.heappop(self.last_packets_remembered)
+                        heapq.heappush(self.last_packets_remembered, packet_id)
+
+                    # To disallow "PING-PONG situations". TODO : be careful about packet_message_id and packet_id
 
                 self.last_packets_treated[packet_id_index] = packet_id
 

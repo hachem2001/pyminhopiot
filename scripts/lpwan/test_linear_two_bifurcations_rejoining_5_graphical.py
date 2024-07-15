@@ -1,5 +1,6 @@
 from piconetwork.lpwan_jitter import *
 from piconetwork.graphical import plot_nodes_lpwan, plot_lpwan_jitter_interval_distribution; import matplotlib.pyplot as plt
+from copy import deepcopy
 
 """
 Linear cluster test
@@ -17,6 +18,33 @@ SIMULATOR_LOGGER.set_verbose(False)
 SOURCE_LOGGER.set_verbose(True)
 CHANNEL_LOGGER.set_verbose(False)
 
+# Subclass GatewayLP to add our own average time delay followup of ToA of packets to gateways from source
+delays_of_arrival_source_to_gateway = [] # The lists are self explanatory in name.
+times_of_arrival_source_to_gateway = []
+times_of_departure_source_to_gateway = []
+
+groups_of_delays = []
+
+class GatewayLP_mod(GatewayLP):
+    def arrival_successful_callback(self, simulator: 'Simulator', packet: 'PacketLP'):
+        times_of_arrival_source_to_gateway.append(simulator.get_current_time())
+        times_of_departure_source_to_gateway.append(packet.first_emission_time)
+        delays_of_arrival_source_to_gateway.append(-packet.first_emission_time + simulator.get_current_time())
+
+class NodeLP_mod(NodeLP):
+    def __init__(self, x: float, y: float, channel: 'Channel' = None):
+        super().__init__(x, y, channel)
+
+        self.received_packets_times = []
+        self.transmitted_packets_times = []
+    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
+        self.received_packets_times.append(simulator.get_current_time())
+        super().process_packet(simulator, packet)
+
+    def transmit_packet_lp_effective(self, simulator: 'Simulator', packet: 'PacketLP'):
+        self.transmitted_packets_times.append(simulator.get_current_time())
+        super().transmit_packet_lp_effective(simulator, packet)
+
 def node_cluster_around(x, y, number, radius):
     theta = 0
     nodes = []
@@ -24,20 +52,22 @@ def node_cluster_around(x, y, number, radius):
         theta = i * math.pi * 2 / number
         this_x = x + radius * math.cos(theta)
         this_y = y + radius * math.sin(theta)
-        nodes.append(NodeLP(this_x, this_y))
+        nodes.append(NodeLP_mod(this_x, this_y))
 
     return nodes
 
 # SIMULATION DURATION
-SIMULATION_DURATION = 8000
+SIMULATION_DURATION = 4000
 SIMULATION_DISABLE_BRANCH_TIMESTAMP = 2000
+
+SOURCE_RECURRENT_TRANSMISSIONS_DELAY = 20
 
 # Modify some innate values for better testing :
 NodeLP_Jitter_Configuration.JITTER_MIN_VALUE = 0.2
 NodeLP_Jitter_Configuration.JITTER_MAX_VALUE = 1.2
 NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.5
 NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
-NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.CONSERVATIVE
+NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
 
 R_VALUE = 10.0
 
@@ -58,7 +88,7 @@ nodes_to_add_buttom_right = []
 nodes_after_rejoining_branch = []
 
 # SOURCE 
-source = SourceLP(start_x - 2*inter_cluster_distance/3 , start_y, 20)
+source = SourceLP(start_x - 2*inter_cluster_distance/3 , start_y, SOURCE_RECURRENT_TRANSMISSIONS_DELAY)
 nodes.append(source)
 
 
@@ -124,8 +154,8 @@ nodes.extend(nodes_to_add_top_right)
 nodes.extend(nodes_to_add_buttom_right)
 nodes.extend(nodes_after_rejoining_branch)
 
-nodes.append(GatewayLP(end_x, end_y))
-#nodes.append(GatewayLP(end_x, end_y + inter_cluster_distance))
+nodes.append(GatewayLP_mod(end_x, end_y))
+#nodes.append(GatewayLP_mod(end_x, end_y + inter_cluster_distance))
 
 # Example usage:
 sim = Simulator(SIMULATION_DURATION, 0.00001)
@@ -167,7 +197,7 @@ def recurrent_metric(simulator: 'Simulator', recurrent_interval : float = 100.0)
     """ For making a graph on evolution of jitter over simulation time """
     count_per_jitter_interval = [0 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     for node in nodes:
-        if isinstance(node, NodeLP) and node.get_enabled():
+        if isinstance(node, NodeLP_mod) and node.get_enabled():
             count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
     jitter_distributions.append(list(count_per_jitter_interval))
     jitter_distributions_timestamps.append(simulator.get_current_time())
@@ -219,3 +249,27 @@ draw_graphs(sim)
 
 # Draw jitter bar plot distribution from recurrent metrics
 draw_metrics()
+
+# OTHER METRICS
+# Now : the total number of RETX in some bins!
+transmission_times_combined = []
+for node in nodes:
+    if isinstance(node, NodeLP_mod):
+        transmission_times_combined.extend(node.transmitted_packets_times)
+
+plt.hist(transmission_times_combined, edgecolor="indigo", bins=range(int(min(transmission_times_combined)), int(max(
+    transmission_times_combined) + SOURCE_RECURRENT_TRANSMISSIONS_DELAY*4), int(SOURCE_RECURRENT_TRANSMISSIONS_DELAY*4)))
+plt.xlabel('Time of packet retransmission')
+plt.ylabel('Number of packets retransmitted')
+plt.legend()
+plt.show()
+
+groups_of_delays.append([deepcopy(delays_of_arrival_source_to_gateway), deepcopy(times_of_arrival_source_to_gateway),
+                         deepcopy(times_of_departure_source_to_gateway)])
+
+for i in range(len(groups_of_delays)):
+    plt.plot(groups_of_delays[i][2], groups_of_delays[i][0])
+    plt.xlabel('Time of departure of packet')
+    plt.ylabel('Delay from source to gateway')
+    plt.legend()
+    plt.show()

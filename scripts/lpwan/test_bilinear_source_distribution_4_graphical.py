@@ -51,19 +51,19 @@ NodeLP_Jitter_Configuration.JITTER_MIN_VALUE = 0.2
 NodeLP_Jitter_Configuration.JITTER_MAX_VALUE = 1.2
 NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.6
 NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
-NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
+NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.CONSERVATIVE
 
 # SIMULATION DURATION
-SIMULATION_DURATION = 2000
-SIMULATION_DISABLE_BRANCH_TIMESTAMP = 1000
+SIMULATION_DURATION = 3000
+SIMULATION_DISABLE_BRANCH_TIMESTAMP = 1500
 
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 15.0
 
 x_box_min = 0.0
 x_box_max = 600.0
-y_box_min = -400.0
-y_box_max = 400.0
+y_box_min = -300.0
+y_box_max = 300.0
 
 x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_max
@@ -71,8 +71,8 @@ y_height = y_box_max - y_box_max
 box_surface_max = (y_box_max - y_box_min) * (x_box_max - x_box_min)
 nodes = []
 
-source_1 = SourceLP(x_box_min , (y_box_max*4.0+y_box_min)/5.0, 23)
-source_2 = SourceLP(x_box_min , (y_box_max+y_box_min*4.0)/5.0, 29)
+source_1 = SourceLP(x_box_min , (y_box_max*4.0+y_box_min)/5.0, 20)
+source_2 = SourceLP(x_box_min , (y_box_max+y_box_min*4.0)/5.0, 20)
 
 nodes.append(source_1)
 nodes.append(source_2)

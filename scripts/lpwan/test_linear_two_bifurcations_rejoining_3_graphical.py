@@ -142,7 +142,7 @@ x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_min
 
 def disable_upped_end(simulator):
-    for node in nodes_to_add_top_right:
+    for node in nodes_to_add_buttom_right:
         node.set_enabled(False)
 
 def draw_graphs(simulator):

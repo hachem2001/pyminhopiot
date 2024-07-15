@@ -54,16 +54,16 @@ NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
 NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BOLD
 
 # SIMULATION DURATION
-SIMULATION_DURATION = 2000
-SIMULATION_DISABLE_BRANCH_TIMESTAMP = 1000
+SIMULATION_DURATION = 4000
+SIMULATION_DISABLE_BRANCH_TIMESTAMP = 2000
 
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 15.0
 
 x_box_min = 0.0
 x_box_max = 600.0
-y_box_min = -400.0
-y_box_max = 400.0
+y_box_min = -300.0
+y_box_max = 300.0
 
 x_width = x_box_max - x_box_min
 y_height = y_box_max - y_box_max
