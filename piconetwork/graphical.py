@@ -1,5 +1,6 @@
 from .lpwan_jitter import *
 import matplotlib.pyplot as plt
+from typing import Optional
 
 def plot_nodes_agnostic(nodes_list: List['Node'], channel: 'Channel', min_x, min_y, max_x, max_y, ):
     # Create a figure and axis
@@ -20,7 +21,7 @@ def plot_nodes_agnostic(nodes_list: List['Node'], channel: 'Channel', min_x, min
 
         marker = markers[node_type]
         color = colors[node_type]
-        
+
         ax.scatter(x, y, label=node_type, marker=marker, color=color, s=100)  # s is the size of the marker
         if node_type == 'gateway' or node_type == 'source':
             ax.text(x, y, node.get_id(), fontsize=12, ha='right')  # Annotate the node with its ID
@@ -56,9 +57,12 @@ def plot_nodes_agnostic(nodes_list: List['Node'], channel: 'Channel', min_x, min
 
     plt.show()
 
-def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_y, max_x, max_y, ):
+def plot_nodes_lpwan_better(nodes_list: List['NodeLP'], channel: 'Channel', title: Optional[str] = None):
     # Create a figure and axis
     fig, ax = plt.subplots()
+
+    # Figure out min_x, min_y, max_x, max_y later
+    min_x = min_y = max_x = max_y = None
 
     # Define different markers and colors for different types of nodes
     markers = {'source': 'o', 'gateway': 's', 'node': 'x', 'suppressed': '.', 'unengaged': '1', 'disabled': '2', 'disabled_gw': 's', 'disabled_sr': 'o'}
@@ -67,6 +71,12 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     for node in nodes_list:
         x = node.x
         y = node.y
+
+        if min_x == None or x < min_x: min_x = x
+        if max_x == None or x > max_x: max_x = x
+        if min_y == None or y < min_y: min_y = y
+        if max_y == None or y > max_y: max_y = y
+
         node_type = 'node'
         if isinstance(node, GatewayLP):
             if node.get_enabled() == False:
@@ -85,7 +95,7 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
                 node_type = 'disabled'
             elif suppression_mode == NodeLP_Suppression_Mode.REGULAR:
                 node_type = 'node'
-            elif suppression_mode == node.last_packets_informations[0].SUPPRESSION_MODE_SWITCH:
+            elif suppression_mode == node.last_packets_informations[0].suppression_switch:
                 node_type = 'suppressed'
             elif suppression_mode == NodeLP_Suppression_Mode.NEVER_ENGAGED:
                 node_type = 'unengaged'
@@ -114,15 +124,26 @@ def plot_nodes_lpwan(nodes_list: List['NodeLP'], channel: 'Channel', min_x, min_
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), loc='upper left', bbox_to_anchor=(1, 1))
 
+    min_x = min_x != None and min_x or 0
+    min_y = min_y != None and min_y or 0
+    max_x = max_x != None and max_x or 0
+    max_y = max_y != None and max_y or 0
+
+    width =  max_x - min_x
+    height = max_x - min_x
+
     # Set axis limits
-    ax.set_xlim(min_x, max_x)
-    ax.set_ylim(min_y, max_y)
+    ax.set_xlim(min_x - 0.05 * width, max_x + 0.05 * width)
+    ax.set_ylim(min_y - 0.05 * height, max_y + 0.05 * height)
     ax.set_aspect('equal', 'box') # For faithful representation
 
     # Set labels
     ax.set_xlabel('X Coordinate')
     ax.set_ylabel('Y Coordinate')
-    ax.set_title('Node Network')
+    if title != None:
+        ax.set_title(title)
+    else:
+        ax.set_title('Node Network')
 
     # Show plot
     plt.tight_layout()
@@ -135,6 +156,7 @@ def plot_lpwan_jitter_interval_distribution(nodes: List[NodeLP]):
     for node in nodes:
         if isinstance(node, NodeLP) and node.get_enabled():
             count_per_jitter_interval[node.last_packets_informations[0].min_jitter] += 1
+
     plt.bar([i+1 for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)], count_per_jitter_interval, label='Number of Nodes (Exluding Disabled)')
     plt.legend()
     plt.xlabel('Jitter Interval')
@@ -150,7 +172,7 @@ def plot_delays_of_packet_arrival(delays_of_arrival_source_to_gateway, times_of_
 
 def plot_helper_lpwan_jitter_recurrent_metric(simulator: 'Simulator', nodes : List['NodeLP'], jitter_distributions, jitter_distributions_timestamps, recurrent_interval : float = 100.0):
     """
-    For making a graph on evolution of jitter over simulation time 
+    For making a graph on evolution of jitter over simulation time
     :nodes: List of nodes to keep track of.
     :jitter_distributions: List!
     :jitter_distirbutions_timestamps : List as well
@@ -174,13 +196,13 @@ def plot_lpwan_jitter_metrics(jitter_distributions_timestamps, jitter_distributi
         to_be_filled = []
         for j in range(len(jitter_distributions_timestamps)):
             to_be_filled.append(jitter_distributions[j][i])
-        
+
         plot_bars_drawn.append(plt.bar(jitter_distributions_timestamps, to_be_filled, bottom=bottom, width=recurrent_interval*0.9))
-        
+
         for j in range(len(jitter_distributions_timestamps)):
             bottom[j] += jitter_distributions[j][i]
 
-    
+
     handles = [plot_bars_drawn[i][0] for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     labels = [i for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))

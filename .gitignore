@@ -2,4 +2,7 @@
 .venv/
 __pycache__/
 .log_test*
-piconetwork.egg-infopyrightconfig.json
+piconetwork.egg-info
+pyrightconfig.json
+*saved_logs/
+.ultimate_analyze

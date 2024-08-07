@@ -34,12 +34,12 @@ class GatewayLP_mod(GatewayLP):
 class NodeLP_mod(NodeLP):
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
         super().__init__(x, y, channel)
-
         self.received_packets_times = []
         self.transmitted_packets_times = []
-    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
+
+    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP', do_not_schedule_reception : bool = False):
         self.received_packets_times.append(simulator.get_current_time())
-        super().process_packet(simulator, packet)
+        super().process_packet(simulator, packet, do_not_schedule_reception)
 
     def transmit_packet_lp_effective(self, simulator: 'Simulator', packet: 'PacketLP'):
         self.transmitted_packets_times.append(simulator.get_current_time())
@@ -71,7 +71,7 @@ NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BO
 
 R_VALUE = 10.0
 
-CHANNEL_HEARING_RADIUS = R_VALUE 
+CHANNEL_HEARING_RADIUS = R_VALUE
 intra_cluster_diameter = R_VALUE * 5.0/6.0
 inter_cluster_distance = R_VALUE * 10.0/6.0
 cluster_size = 5 ; assert(cluster_size > 1) # Number of nodes per cluster
@@ -87,7 +87,7 @@ nodes_to_add_top_right = []
 nodes_to_add_buttom_right = []
 nodes_after_rejoining_branch = []
 
-# SOURCE 
+# SOURCE
 source = SourceLP(start_x - 2*inter_cluster_distance/3 , start_y, SOURCE_RECURRENT_TRANSMISSIONS_DELAY)
 nodes.append(source)
 
@@ -100,10 +100,10 @@ nodes_after_rejoining_branch.extend(node_cluster_around(start_x, start_y, cluste
 for i in range(number_of_clusters//2):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_top_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y + inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_top_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
 for i in range(number_of_clusters//2, number_of_clusters-1):
@@ -113,20 +113,20 @@ for i in range(number_of_clusters//2, number_of_clusters-1):
 
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_top_right_direction = node_cluster_around(this_start_x + inter_cluster_distance/math.sqrt(2)*(this_i), this_start_y_top - inter_cluster_distance/math.sqrt(2)*(this_i) , cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_top_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
 # BOTTOM RIGHT
 for i in range(number_of_clusters//2):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_bottom_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y - inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_diameter/2)
-    
-    for j in range(0, len(nodes_to_add_top_right_direction)):
+
+    for j in range(0, len(nodes_to_add_bottom_right_direction)):
         nodes_to_add_bottom_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_buttom_right.extend(nodes_to_add_bottom_right_direction)
 
 for i in range(number_of_clusters//2, number_of_clusters-1):
@@ -136,10 +136,10 @@ for i in range(number_of_clusters//2, number_of_clusters-1):
 
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_bottom_right_direction = node_cluster_around(this_start_x + inter_cluster_distance/math.sqrt(2)*(this_i), this_start_y_bottom + inter_cluster_distance/math.sqrt(2)*(this_i), cluster_size, intra_cluster_diameter/2)
-    
-    for j in range(0, len(nodes_to_add_top_right_direction)):
+
+    for j in range(0, len(nodes_to_add_bottom_right_direction)):
         nodes_to_add_bottom_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_buttom_right.extend(nodes_to_add_bottom_right_direction)
 
 # AFTER REJOINING BRANCH
@@ -214,13 +214,13 @@ def draw_metrics():
         to_be_filled = []
         for j in range(len(jitter_distributions_timestamps)):
             to_be_filled.append(jitter_distributions[j][i])
-        
+
         plot_bars_drawn.append(plt.bar(jitter_distributions_timestamps, to_be_filled, bottom=bottom, width=100))
-        
+
         for j in range(len(jitter_distributions_timestamps)):
             bottom[j] += jitter_distributions[j][i]
 
-    
+
     handles = [plot_bars_drawn[i][0] for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     labels = [i for i in range(NodeLP_Jitter_Configuration.JITTER_INTERVALS)]
     ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))

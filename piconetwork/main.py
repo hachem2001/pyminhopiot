@@ -2,7 +2,7 @@ import heapq
 import time
 from io import StringIO
 from math import sqrt
-from typing import Callable, Any, Dict, List
+from typing import Callable, Any, Dict, List, Optional
 
 """
 OUERTANI Mohamed Hachem <omhx21@gmail.com>
@@ -11,7 +11,7 @@ Many simplifications are included, notably the lack of a Channel.
 It is in nodes that the time of receiving the packet is encoded
 
 This is naturally not representative of the real world
-- To be improved with an ad-hoc Channel class taking-it-all 
+- To be improved with an ad-hoc Channel class taking-it-all
 
 """
 
@@ -31,7 +31,7 @@ CHANNEL_LOGGER = Logger("channel", verbose=True)
 class Loggable:
     """ An object that ships with a logging unit. Useful for logging what is happening (event callbacks etc ...) """
 
-    def __init__(self, logger=NONE_LOGGER, preamble='', active=True, verbose_overwrite=True, simulator: 'Simulator'=None):
+    def __init__(self, logger=NONE_LOGGER, preamble='', active=True, verbose_overwrite=True, simulator: Optional['Simulator']=None):
         """
         :logger: Logger object associated
         :preamble: Preamble to prepend to every logged message
@@ -42,7 +42,11 @@ class Loggable:
         self._logger_preamble = preamble
         self._logger_active = active
         self._logger_verbose_overwrite = verbose_overwrite
-        self._logger_simulator: 'Simulator' = simulator
+        self._logger_simulator: Optional['Simulator'] = simulator
+
+    def _reset_loggable_part(self):
+        self._logger.reset_logs()
+        self._logger_simulator = None
 
     def _log(self, *args, end='', verbose_overwrite = True, **kwargs):
         """ Adds message to log. """
@@ -51,7 +55,7 @@ class Loggable:
             print(*args, file=output, end=end, **kwargs)
             extra_prependor = self._logger_simulator != None and f'|{self._logger_simulator.get_current_time():0.2f}| ' or ''
             self._logger.log(f"{extra_prependor}{self._logger_preamble}"+output.getvalue(), verbose_overwrite and self._logger_verbose_overwrite)
-            
+
     def set_logger_active(self, active:bool):
         """ Whether logs are saved (in memory) or not """
         self._logger_active = active
@@ -59,7 +63,7 @@ class Loggable:
     def set_logger_verbose_overwrite(self, verbose_overwrite:bool):
         """ Whether the messages saved in memory are shown in stdout. """
         self._logger_verbose_overwrite = verbose_overwrite
-    
+
     def set_logger_simulator(self, simulator:'Simulator'):
         """
         Sets the simulator associated with this logger
@@ -88,7 +92,7 @@ class Event:
     def execute(self, simulator: 'Simulator'):
         if self.effective:
             self.callback(simulator, *self.args, **self.kwargs)
-    
+
     def cancel(self):
         self.effective = False
 
@@ -109,10 +113,10 @@ class Simulator:
         # How long to sleep before every event execution.
         self.simulations_real_inertia = simulations_real_inertia
 
-    def get_current_time(self):
+    def get_current_time(self) -> float:
         """ Returns current time. Similar to NS3's Simulator::NOW()  """
         return self.current_time
- 
+
     def schedule_event(self, delay: float, callback: Callable[['Simulator'], Any], *args, **kwargs) -> Event:
         """
         Schedules an event for execution.
@@ -131,7 +135,7 @@ class Simulator:
             assert event.time >= self.current_time, "Event scheduled in the past, not possible"
             time.sleep(self.simulations_real_inertia * ((self.simulation_length > 0.0 and min(event.time, self.simulation_length) or event.time) - self.current_time))
             self.current_time = event.time # MUST SET BEFORE EXECUTING THE EVENT
-            
+
             if self.simulation_length > 0.0 and \
                     self.current_time > self.simulation_length:
                 self.running = False
@@ -182,6 +186,10 @@ class Channel:
         self.adjacencies_per_node = {}
         self.packet_delay_per_distance_unit = packet_delay_per_unit
 
+    def set_delay_per_distance_unit(self, delay:float):
+        """ Modifies delay per unit distance; or propagation slowness if you will """
+        self.packet_delay_per_distance_unit = delay
+
     def assign_node(self, node: 'Node'):
         self.assigned_nodes[node.get_id()] = node  # Reference.
         node.set_channel(self)
@@ -194,7 +202,7 @@ class Channel:
     def assign_isolated_nodes(self, *args: 'Node'):
         """
         It might feel counterintuitive here, but the instead of doing
-        a NetDevice assigned to each Node, and NetDevice assigned to 
+        a NetDevice assigned to each Node, and NetDevice assigned to
         channels, here we assign the Nodes themselves to the channel
         (register them), and let each node be assigned a channel.
         """
@@ -227,7 +235,7 @@ class Channel:
     def check_link(self, node_id_1: int, node_id_2: int, unidirectional: bool = False) -> bool:
         """
         Check if node_id_1 is linked to node_id_2
-        if unidirectional : only node_id_1 -> node_id_2 
+        if unidirectional : only node_id_1 -> node_id_2
         """
         return_value = False
         for (id_, distance) in self.adjacencies_per_node[node_id_1]:
@@ -243,7 +251,7 @@ class Channel:
                     return True
 
         return return_value
-    
+
     def _get_link_list_index(self, node_id_1: int, node_id_2: int) -> int:
         """
         Internal function useful for returning the index in self.adjacencies_per_node of node_id_1 where we find node_id_2.
@@ -264,9 +272,9 @@ class Channel:
         result = set()
         for (_id, distance) in self.adjacencies_per_node[node_id]:
             result.add(_id)
-        
+
         return list(result)
-    
+
     def get_distance(self, node_id_1: int, node_id_2: int):
         """ Returns the distance for node_id_1 -> node_id_2 if it exists. """
         assert(self.check_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
@@ -332,8 +340,8 @@ class Node(Loggable):
         """
         self.process_packet(simulator, packet)
 
-    def process_packet(self, simulator: 'Simulator', packet: 'Packer'):
-        """ 
+    def process_packet(self, simulator: 'Simulator', packet: 'Packet'):
+        """
         Process the packet : it is here where broadcasting it may be
         decided.
         """
@@ -341,7 +349,7 @@ class Node(Loggable):
 
     def broadcast_packet(self, simulator: Simulator, packet: Packet):
         """
-        Broadcast packet through channel. 
+        Broadcast packet through channel.
         """
         assert (self.channel != None)
         self.channel.handle_transmission(simulator, packet, self.get_id())
@@ -351,7 +359,7 @@ class Node(Loggable):
         Schedule broadcasting the packet - so it won't be immediate.
         """
         # Remember : simulator is set as first argument by default in callback of schedule_event.
-        simulator.schedule_event(delay, self.broadcast_packet, packet) 
+        simulator.schedule_event(delay, self.broadcast_packet, packet)
 
     def distance_to(self, other: 'Node') -> float:
         return sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)

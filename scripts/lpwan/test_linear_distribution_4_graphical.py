@@ -38,12 +38,12 @@ class GatewayLP_mod(GatewayLP):
 class NodeLP_mod(NodeLP):
     def __init__(self, x: float, y: float, channel: 'Channel' = None):
         super().__init__(x, y, channel)
-
         self.received_packets_times = []
         self.transmitted_packets_times = []
-    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP'):
+
+    def process_packet(self, simulator: 'Simulator', packet: 'PacketLP', do_not_schedule_reception : bool = False):
         self.received_packets_times.append(simulator.get_current_time())
-        super().process_packet(simulator, packet)
+        super().process_packet(simulator, packet, do_not_schedule_reception)
 
     def transmit_packet_lp_effective(self, simulator: 'Simulator', packet: 'PacketLP'):
         self.transmitted_packets_times.append(simulator.get_current_time())
@@ -67,7 +67,7 @@ def node_point_random_picky(x_start, y_start, x_end, y_end, nodes, prohibitive_d
                 break
         if is_good:
             break
-    
+
     if number_of_retries >= MAX_RETRIES:
         print("Too many retries.")
         sys.exit(1)
@@ -82,7 +82,7 @@ NodeLP_Jitter_Configuration.JITTER_MAX_VALUE = 1.2
 NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.6
 NodeLP_Jitter_Configuration.JITTER_INTERVALS = 10
 
-SIMULATION_TOTAL_DURATION = 3000
+SIMULATION_TOTAL_DURATION = 6000
 SOURCE_RECURRENT_TRANSMISSIONS_DELAY = 25
 HEARING_RADIUS = 30.0
 DENSITY_RADIUS = 15.0
@@ -104,6 +104,7 @@ for suppression_mode in suppression_modes:
     random.seed(6) # Essential, otherwise the initial configuration differs every time ...
     NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = suppression_mode
     NodeLP_mod.next_id = 1
+    Node.next_id = 1
 
     nodes = []
     source = SourceLP(x_box_min , (y_box_max+y_box_min)/2.0, SOURCE_RECURRENT_TRANSMISSIONS_DELAY)
@@ -151,14 +152,14 @@ for suppression_mode in suppression_modes:
     # Start sending packets from source
     source.start_sending(sim)
 
-    #plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-    #plot_lpwan_jitter_interval_distribution(nodes)
+    plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+    plot_lpwan_jitter_interval_distribution(nodes)
 
     # Run the simulator
     sim.run()
 
-    #plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
-    #plot_lpwan_jitter_interval_distribution(nodes)
+    plot_nodes_lpwan(nodes, channel, x_box_min - x_width*0.05, y_box_min - y_height*0.05, x_box_max + x_width*0.05, y_box_max + y_height*0.05)
+    plot_lpwan_jitter_interval_distribution(nodes)
 
     groups_of_delays.append([deepcopy(delays_of_arrival_source_to_gateway), deepcopy(times_of_arrival_source_to_gateway), deepcopy(times_of_departure_source_to_gateway)])
 

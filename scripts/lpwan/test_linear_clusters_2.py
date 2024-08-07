@@ -25,10 +25,10 @@ def node_cluster_around(x, y, number, radius):
     return nodes
 
 # Modify some innate values for better testing :
-NodeLP.JitterSuppressionState.JITTER_MIN_VALUE = 0.2
-NodeLP.JitterSuppressionState.JITTER_MAX_VALUE = 1.2
-NodeLP.JitterSuppressionState.ADAPTATION_FACTOR = 0.5
-NodeLP.JitterSuppressionState.JITTER_INTERVALS = 20
+NodeLP_Jitter_Configuration.JITTER_MIN_VALUE = 0.2
+NodeLP_Jitter_Configuration.JITTER_MAX_VALUE = 1.2
+NodeLP_Jitter_Configuration.ADAPTATION_FACTOR = 0.5
+NodeLP_Jitter_Configuration.JITTER_INTERVALS = 20
 
 R_VALUE = 10.0
 
@@ -48,10 +48,10 @@ nodes.append(source)
 for i in range(number_of_clusters):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add = node_cluster_around(start_x + inter_cluster_distance*i, start_y, cluster_size, intra_cluster_distance)
-    
+
     for j in range(0, len(nodes_to_add)):
         nodes_to_add[j].set_logger_verbose_overwrite(False)
-    
+
     nodes.extend(nodes_to_add)
 end_x = start_x + inter_cluster_distance * number_of_clusters
 end_y = 0
