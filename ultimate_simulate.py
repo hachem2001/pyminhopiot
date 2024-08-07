@@ -170,6 +170,11 @@ def init_argparse() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--recurrence_count", type=float,
+        help="How many times the source emits a message. OVERWRITES TOTAL SIMULATION TIME IF SET.",
+    )
+
+    parser.add_argument(
         "-l", "--logsshow", default=["source", "gateway"], nargs='*',
         help="Whether or not to show logs live. Options are : node, source, gateway, channel, simulator. \
         Default : source, gateway.",
@@ -208,6 +213,9 @@ def main() -> None:
     showlogs : List[str] = args.logsshow
     show_network : bool = args.show_network
     do_save_logs_or_not_option : bool = args.save
+    recurrence_count : Optional[float] = None
+    if args.recurrence_count:
+        recurrence_count = args.recurrence_count
 
     # Assert that the values are appropriate
     # TODO : assert path where we want to save files is accessible/usable.
@@ -228,6 +236,7 @@ def main() -> None:
     assert nodes_generated > 0, "Number of nodes to attempt generating must be higher than 0"
     assert topology_type in VALID_TOPOLOGIES, "topology given unrecognized. Valid topologies are " + ",".join(VALID_TOPOLOGIES) + "."
     assert hearing_radius > 0.0, "Hearing radius must be a positive float"
+    assert recurrence_count == None or recurrence_count >= 0.0, "Source can not emit 0 times."
 
     # Generate associated GenerationParameters and SimulationParameters
     # NOTE : the nodes' mode must be set manually every time to the appropriate mode during simulation.
@@ -242,7 +251,9 @@ def main() -> None:
         nodes_mode = modes[0], channel_delay_per_unit = channel_delay_per_unit,
         hearing_radius = hearing_radius, jitter_intervals = jitter_intervals,
         jitter_max_value = jitter_max, jitter_min_value = jitter_min,
-        adaptation_factor = adaptation_factor, sources_recurrent_transmission_delays = source_recurrent_delays
+        adaptation_factor = adaptation_factor, sources_recurrent_transmission_delays = source_recurrent_delays,
+        simulation_slowness = simulation_slowness,
+        simulation_total_duration=recurrence_count != None and recurrence_count * max(source_recurrent_delays) or simulation_length
     )
     print("Simulation arguments : ", args)
 
