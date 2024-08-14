@@ -8,7 +8,8 @@ from piconetwork.simulutils import SimulationParameters, GenerationParameters, \
     Simulatable_MetadataAugmented_Dumpable_Network_Object, generate_topology, run_simulation, \
     set_simulation_parameters
 
-from piconetwork.graphutils import Plot_Parameters, get_plotting_parameters, include_simulation_in_figure
+from piconetwork.graphutils import Plot_Parameters, get_plotting_parameters, \
+    include_simulation_in_figure, find_oracle_num_of_hops
 
 from piconetwork.logutils import LogDisector_Single_Source
 
@@ -20,6 +21,8 @@ from zipfile import ZipFile, ZIP_LZMA, ZIP_BZIP2, ZIP_DEFLATED
 import numpy as np
 import matplotlib.pyplot as plt; from matplotlib.figure import Figure; from matplotlib.axes import Axes
 
+import scienceplots # For plotlib styling
+
 """
 File used to generate analysis graphs of logs.
 
@@ -29,6 +32,9 @@ VALID_MODES = ["FLOODING", "SLOWFLOODING", "FASTFLOODING", "REGULAR", "CONSERVAT
 VALID_TOPOLOGIES = ["random_gauss", "random_linear"]
 VALID_LOGS = ["node", "gateway", "source", "simulator", "channel", "event"]
 LOGGERS_DICT = {'node': NODE_LOGGER, 'gateway': GATEWAY_LOGGER, 'source': SOURCE_LOGGER, 'channel': CHANNEL_LOGGER, 'event':EVENT_LOGGER, 'simulator': SIMULATOR_LOGGER}
+
+plt.style.use(['science', 'ieee'])
+plt.rcParams.update({'figure.dpi': '100'})
 
 def init_argparse() -> argparse.ArgumentParser:
     """ Credits : https://realpython.com/python-command-line-arguments/#the-python-standard-library as of 2024 """
@@ -122,9 +128,17 @@ def main() -> None:
             common_network_info.nodes, common_network_info.source_ids, common_network_info.nodes_ids, common_network_info.gateway_ids)
 
         # Define figure to show all of the category's info at once
-        ax1:Axes; ax2:Axes; ax3: Axes; ax4:Axes; fig: Figure
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(11, 7))
+        ax1:Axes; ax2:Axes; ax3: Axes; ax4:Axes; fig1: Figure; fig2: Figure; fig3: Figure; fig4: Figure
 
+        fig1, ax1 = plt.subplots()
+        fig2, ax2 = plt.subplots()
+        fig3, ax3 = plt.subplots()
+        fig4, ax4 = plt.subplots()
+
+        #fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+
+
+        min_number_of_hops_by_oracle = find_oracle_num_of_hops(common_network_info)
         # ax1 : delay
 
         # ax2 : success rate
@@ -139,7 +153,14 @@ def main() -> None:
         # Mode and list of objects
         for mode, list_of_objects in category.items():
             # BIIIG DUMP HERE - WORKS FOR 1 SOURCE CASE only
-            include_simulation_in_figure(fig, ax1, ax2, ax3, ax4, plot_params, list_of_objects, mode)
+            include_simulation_in_figure(ax1, ax2, ax3, ax4, plot_params, list_of_objects,
+                mode, list(category.keys()))
+
+        # Plot oracle
+        if min_number_of_hops_by_oracle != None:
+            l = [plot_params.departure_interval * i for i in range(plot_params.max_departure_intervals)]
+            ax3.plot(l, [min_number_of_hops_by_oracle]*len(l), label='ORACLE')
+
 
         ax1.set_xlabel('Time of departure of packet')
         ax1.set_ylabel('Delay from source to gateway')
@@ -147,10 +168,21 @@ def main() -> None:
         ax2.set_xlabel('Time windows of departure of packets')
         ax2.set_ylabel('Success ratio')
 
+        ax3.set_xlabel('Time of departure of packet')
+        ax3.set_ylabel('Number of hops')
+
+        ax4.set_xlabel('Time windows of departure of packets')
+        ax4.set_ylabel('Number of retransmissions over paacket window')
+
         ax1.legend()
         ax2.legend()
+        ax3.legend()
+        ax4.legend()
 
-        fig.suptitle(f"Simulation name : {name}")
+        fig1.suptitle(f"Simulation name : {name}")
+        fig2.suptitle(f"Simulation name : {name}")
+        fig3.suptitle(f"Simulation name : {name}")
+        fig4.suptitle(f"Simulation name : {name}")
         plt.show()
 
 if __name__ == "__main__":
