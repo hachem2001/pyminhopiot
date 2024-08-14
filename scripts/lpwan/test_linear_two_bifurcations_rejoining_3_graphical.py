@@ -37,7 +37,7 @@ NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BO
 
 R_VALUE = 10.0
 
-CHANNEL_HEARING_RADIUS = R_VALUE 
+CHANNEL_HEARING_RADIUS = R_VALUE
 intra_cluster_diameter = R_VALUE * 5.0/6.0
 inter_cluster_distance = R_VALUE * 10.0/6.0
 cluster_size = 5 ; assert(cluster_size > 1) # Number of nodes per cluster
@@ -57,10 +57,10 @@ nodes_to_add_buttom_right = []
 for i in range(number_of_clusters//2):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_top_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y + inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_top_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
 for i in range(number_of_clusters//2, number_of_clusters-1):
@@ -71,20 +71,20 @@ for i in range(number_of_clusters//2, number_of_clusters-1):
 
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_top_right_direction = node_cluster_around(this_start_x + inter_cluster_distance/math.sqrt(2)*(this_i), this_start_y_top - inter_cluster_distance/math.sqrt(2)*(this_i) , cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_top_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
 # BOTTOM RIGHT
 for i in range(number_of_clusters//2):
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_bottom_right_direction = node_cluster_around(start_x + inter_cluster_distance/math.sqrt(2)*(i+1), start_y - inter_cluster_distance/math.sqrt(2)*(i+1), cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_bottom_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_buttom_right.extend(nodes_to_add_bottom_right_direction)
 
 for i in range(number_of_clusters//2, number_of_clusters-1):
@@ -95,10 +95,10 @@ for i in range(number_of_clusters//2, number_of_clusters-1):
 
     # Set the logging verbosity of every node to False except a handful we cherry pick
     nodes_to_add_bottom_right_direction = node_cluster_around(this_start_x + inter_cluster_distance/math.sqrt(2)*(this_i), this_start_y_bottom + inter_cluster_distance/math.sqrt(2)*(this_i), cluster_size, intra_cluster_diameter/2)
-    
+
     for j in range(0, len(nodes_to_add_top_right_direction)):
         nodes_to_add_bottom_right_direction[j].set_logger_verbose_overwrite(False)
-    
+
     nodes_to_add_buttom_right.extend(nodes_to_add_bottom_right_direction)
 
 nodes_rejoining_branch = []

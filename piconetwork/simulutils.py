@@ -16,6 +16,7 @@ from .graphical import plot_nodes_lpwan_better;
 Simulation utils contain classes, datastructures and functions that are helpful for simulating scenarios, and analyzing logs for graphs
 """
 
+# VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss", "two_gateways_switch_middle_random_linear"]
 VALID_MODES = ["FLOODING", "SLOWFLOODING", "FASTFLOODING", "REGULAR", "CONSERVATIVE", "AGGRESSIVE", "BOLD"]
 VALID_LOGS = ["node", "gateway", "source", "simulator", "channel", "event"]
 LOGGERS_DICT = {'node': NODE_LOGGER, 'gateway': GATEWAY_LOGGER, 'source': SOURCE_LOGGER, 'channel': CHANNEL_LOGGER, 'event':EVENT_LOGGER, 'simulator': SIMULATOR_LOGGER}
@@ -106,36 +107,87 @@ def generate_topology(topology_parameters: GenerationParameters) -> Tuple[List[N
         pos = {i: (random.gauss(0, width/density), random.gauss(0, height/density)) for i in range(n)} # Position of nodes
         G = nx.random_geometric_graph(n, dim=2, radius=hearing_distance, pos=pos)
         largest_cc = G.subgraph(max(nx.connected_components(G), key=len)).copy() # Keep the biggest connected subgraph.
-
+    elif topology_parameters.type_of_network == 'two_gateways_switch_middle_random_linear':
+        width = n**(0.5) * hearing_distance * 1.41 / density
+        height = n**(0.5) * hearing_distance / 1.41 / density
+        pos = {i: (random.random() * width - width/2, random.random() * height - height/2) for i in range(n)} # Position of nodes
+        G = nx.random_geometric_graph(n, dim=2, radius=hearing_distance, pos=pos)
+        largest_cc = G.subgraph(max(nx.connected_components(G), key=len)).copy() # Keep the biggest connected subgraph.
     else:
         raise ValueError(f"Unexpected network topology {topology_parameters.type_of_network}.")
 
     # Add the nodes in the generated topology, and subscribe them to the same channel with set hearing distance.
     assert len(largest_cc) > 0, "Empty topology - should not be possible"
-    leftmost_node_id = rightmost_node_id = -1
-    for id in largest_cc.nodes:
-        if leftmost_node_id == -1 or pos[id][0] < pos[leftmost_node_id][0]:
-            leftmost_node_id = id
+    # Find source and gateway(s) : the second gateway depends on topology_type
+    pairs_shortest = dict(nx.all_pairs_shortest_path_length(largest_cc))
 
-        if rightmost_node_id == -1 or pos[id][0] > pos[rightmost_node_id][0]:
-            rightmost_node_id = id
+    longest_pair = (-1, -1, -1)
+    for node, dsnts in pairs_shortest.items():
+        for node_2, distance in dsnts.items():
+            if distance > longest_pair[2]:
+                longest_pair = (node, node_2, distance)
 
-    # Leftmost : source, rightmost : destination
-    other_nodes = list(largest_cc.nodes); other_nodes.remove(leftmost_node_id); other_nodes.remove(rightmost_node_id)
+    first_good_triplet = (longest_pair[0], longest_pair[1], -1, -1)
+    for node, distance in pairs_shortest[longest_pair[0]].items():
+        if node != longest_pair[0] and node != longest_pair[1]:
+            distance_1 = longest_pair[2]
+            distance_2 = pairs_shortest[first_good_triplet[0]][node]
+            distance_3 = pairs_shortest[first_good_triplet[1]][node]
+            value = distance_1 + distance_2 + distance_3
+            if value > first_good_triplet[3]:
+                first_good_triplet = (longest_pair[0], longest_pair[1], node, value)
 
-    # Now generate!
-    source = SourceLP(pos[leftmost_node_id][0], pos[leftmost_node_id][1], interval=topology_parameters.sources_recurrent_transmission_delays[0])
-    all_nodes.append(source)
-    source_ids.append(len(all_nodes)-1)
+    second_good_triplet = (longest_pair[1], longest_pair[0], -1, -1)
+    for node, distance in pairs_shortest[longest_pair[0]].items():
+        if node != longest_pair[0] and node != longest_pair[1]:
+            distance_1 = longest_pair[2]
+            distance_2 = pairs_shortest[second_good_triplet[0]][node]
+            distance_3 = pairs_shortest[second_good_triplet[1]][node]
+            value = distance_1 + distance_2 + distance_3
+            if value > second_good_triplet[3]:
+                second_good_triplet = (longest_pair[0], longest_pair[1], node, value)
 
-    for node_id in other_nodes:
-        node = NodeLP(pos[node_id][0], pos[node_id][1], mode=topology_parameters.nodes_mode)
-        all_nodes.append(node)
-        nodes_ids.append(len(all_nodes)-1)
+    # (source, furthest_gateway, second_best_gateway)
+    good_triplet = first_good_triplet[3] > second_good_triplet[3] and first_good_triplet or second_good_triplet
 
-    gateway = GatewayLP(pos[rightmost_node_id][0], pos[rightmost_node_id][1])
-    all_nodes.append(gateway)
-    gateway_ids.append(len(all_nodes)-1)
+    if not topology_parameters.type_of_network in ['two_gateways_switch_middle_random_linear']:
+        other_nodes = list(largest_cc.nodes); other_nodes.remove(good_triplet[0]); other_nodes.remove(good_triplet[1])
+
+        # Now generate!
+        source = SourceLP(pos[good_triplet[0]][0], pos[good_triplet[0]][1], interval=topology_parameters.sources_recurrent_transmission_delays[0])
+        all_nodes.append(source)
+        source_ids.append(len(all_nodes)-1)
+
+        for node_id in other_nodes:
+            node = NodeLP(pos[node_id][0], pos[node_id][1], mode=topology_parameters.nodes_mode)
+            all_nodes.append(node)
+            nodes_ids.append(len(all_nodes)-1)
+
+        gateway = GatewayLP(pos[good_triplet[1]][0], pos[good_triplet[1]][1])
+        all_nodes.append(gateway)
+        gateway_ids.append(len(all_nodes)-1)
+    else:
+        other_nodes = list(largest_cc.nodes); other_nodes.remove(good_triplet[0]); other_nodes.remove(good_triplet[1]); other_nodes.remove(good_triplet[2])
+
+        # Now generate!
+        # 2nd is source
+        source = SourceLP(pos[good_triplet[1]][0], pos[good_triplet[1]][1], interval=topology_parameters.sources_recurrent_transmission_delays[0])
+        all_nodes.append(source)
+        source_ids.append(len(all_nodes)-1)
+
+        for node_id in other_nodes:
+            node = NodeLP(pos[node_id][0], pos[node_id][1], mode=topology_parameters.nodes_mode)
+            all_nodes.append(node)
+            nodes_ids.append(len(all_nodes)-1)
+
+        # 1st and 3nd as gateways. This allows better "distribution" basically
+        gateway_1 = GatewayLP(pos[good_triplet[0]][0], pos[good_triplet[0]][1])
+        gateway_2 = GatewayLP(pos[good_triplet[2]][0], pos[good_triplet[2]][1])
+        all_nodes.append(gateway_1)
+        all_nodes.append(gateway_2)
+        gateway_ids.append(len(all_nodes)-2)
+        gateway_ids.append(len(all_nodes)-1)
+
 
     # Now subscribe all the nodes to the channel
     channel.create_metric_mesh(topology_parameters.hearing_radius, *all_nodes)

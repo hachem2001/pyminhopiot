@@ -35,7 +35,7 @@ NodeLP_Jitter_Configuration.SUPPRESSION_MODE_SWITCH = NodeLP_Suppression_Mode.BO
 
 R_VALUE = 10.0
 
-CHANNEL_HEARING_RADIUS = R_VALUE 
+CHANNEL_HEARING_RADIUS = R_VALUE
 intra_cluster_diameter = R_VALUE * 5.0/6.0
 inter_cluster_distance = R_VALUE * 8.0/6.0
 cluster_size = 4 ; assert(cluster_size > 1) # Number of nodes per cluster
@@ -60,14 +60,14 @@ nodes_to_add_buttom_right = []
 # TOP
 if True:
     for i in range(number_of_vertical_clusters_per_branch_direction):
-        nodes_to_add_top_right_direction = node_cluster_around(start_x, start_y + inter_cluster_distance*(i+1), cluster_size, intra_cluster_diameter / 2.0)        
+        nodes_to_add_top_right_direction = node_cluster_around(start_x, start_y + inter_cluster_distance*(i+1), cluster_size, intra_cluster_diameter / 2.0)
         nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
     # TOP GO RIGHT
     for i in range(number_of_horizontal_clusters_per_branch - 1):
         this_start_x = start_x
         this_start_y_top = start_y + inter_cluster_distance*(number_of_vertical_clusters_per_branch_direction)
-        nodes_to_add_top_right_direction = node_cluster_around(this_start_x + inter_cluster_distance*(i+1), this_start_y_top, cluster_size, intra_cluster_diameter / 2.0)        
+        nodes_to_add_top_right_direction = node_cluster_around(this_start_x + inter_cluster_distance*(i+1), this_start_y_top, cluster_size, intra_cluster_diameter / 2.0)
         nodes_to_add_top_right.extend(nodes_to_add_top_right_direction)
 
     # TOP RETURN BACK

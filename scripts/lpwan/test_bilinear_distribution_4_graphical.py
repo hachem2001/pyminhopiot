@@ -37,7 +37,7 @@ def node_point_random_picky(x_start, y_start, x_end, y_end, nodes, prohibitive_d
                 break
         if is_good:
             break
-    
+
     if number_of_retries >= MAX_RETRIES:
         print("Too many retries.")
         sys.exit(1)

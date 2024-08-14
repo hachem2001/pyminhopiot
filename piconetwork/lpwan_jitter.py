@@ -291,7 +291,7 @@ class NodeLP_Suppression_Mode(Enum):
     REGULAR = auto() # No suppressions
     CONSERVATIVE = auto() # Conservative suppression depending on number of overheard neighbours
     AGGRESSIVE = auto() # Aggressive suppression with fixed probability.
-    BOLD = auto() # I call it bold because it retransmits-not so long as it does not hear a retransmitter.
+    BOLD = auto() # I call it BOLD because it retransmits-not so long as it does not hear a retransmitter.
 
     DEFAULT_START = NEVER_ENGAGED # START MODE OF NODES.
     DEFAULT_SUPPRESSION = AGGRESSIVE # DEFINE DEFAULT SUPPRESSION MODE HERE!

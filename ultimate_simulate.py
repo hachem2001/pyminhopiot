@@ -37,7 +37,7 @@ Steps :
 """
 
 VALID_MODES = ["FLOODING", "SLOWFLOODING", "FASTFLOODING", "REGULAR", "CONSERVATIVE", "AGGRESSIVE", "BOLD"]
-VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss"]
+VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss", "two_gateways_switch_middle_random_linear"]
 VALID_LOGS = ["node", "gateway", "source", "simulator", "channel", "event"]
 LOGGERS_DICT = {'node': NODE_LOGGER, 'gateway': GATEWAY_LOGGER, 'source': SOURCE_LOGGER, 'channel': CHANNEL_LOGGER, 'event':EVENT_LOGGER, 'simulator': SIMULATOR_LOGGER}
 
@@ -262,8 +262,28 @@ def main() -> None:
 
     # TODO : take "count" into account and redo this sequence many times
     # TODO : take into account every different mode
+
+    # Calculate offsets
+    counter_offset_per_mode = {}
+    for mode in modes:
+        search_prefix = filenames_prefix + "_" + mode + "_"
+        counter_offset_per_mode[mode] = 0
+
+        # Get list of already existing files
+        filenames = next(os.walk(directory_prefix + '/'), (None, None, []))[2]  # [] if no file
+        _filenames = [];
+        for x in filenames:
+            if search_prefix in x:
+                _filenames.append(x)
+
+        filenames = _filenames
+        counter_offset_per_mode[mode] = len(filenames)
+
+    print("Saving files offset per mode : ", counter_offset_per_mode)
+
     for counter in range(count):
         for i in range(len(modes)):
+
             simulation_parameters.nodes_mode = modes[i]
             # Generate full meta_data object
             simulation_full_parameters_and_metadata = Simulatable_MetadataAugmented_Dumpable_Network_Object(
@@ -273,9 +293,13 @@ def main() -> None:
             )
 
             # Name of associated files :
-            zip_prefix = directory_prefix + '/' + filenames_prefix + "_" + modes[i] + "_" + str(counter)
+            search_prefix = directory_prefix + '/' + filenames_prefix + "_" + modes[i] + "_"
+            zip_prefix = directory_prefix + '/' + filenames_prefix + "_" + modes[i] + "_" + str(counter + counter_offset_per_mode[modes[i]])
             file_logs_name = zip_prefix + "_logs"
             file_topology_info_name = zip_prefix + "_topology_info"
+
+            # Check if files of the same name exist already
+
 
             # Run simulation!
             run_simulation(simulation_full_parameters_and_metadata, file_logs_name, file_topology_info_name,

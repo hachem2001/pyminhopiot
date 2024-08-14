@@ -151,10 +151,11 @@ def main() -> None:
         plot_params = get_plotting_parameters(sim_params)
 
         # Mode and list of objects
+        all_modes = list(category.keys())
         for mode, list_of_objects in category.items():
             # BIIIG DUMP HERE - WORKS FOR 1 SOURCE CASE only
             include_simulation_in_figure(ax1, ax2, ax3, ax4, plot_params, list_of_objects,
-                mode, list(category.keys()))
+                mode, all_modes)
 
         # Plot oracle
         if min_number_of_hops_by_oracle != None:

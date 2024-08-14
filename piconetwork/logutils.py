@@ -45,8 +45,9 @@ class LogDisector_Single_Source:
         self.path = path_logs
         self.logs = []
         self.node_stats = {
-            'received_packets_times': [], # By gateway
-            'transmitted_packets_times': []
+            'received_packets_times': [],
+            'transmitted_packets_times': [],
+            'jitter_updates': [], # [(timestamp, newjitter) ...]
         } # Both used in combo to draw the nice #retx graph.
         self.packet_lifetime_infos = {} # Format is id: [transmission_time, reception_time or False, number_of_hops or False]
 
@@ -75,13 +76,20 @@ class LogDisector_Single_Source:
         elif mode == "gateway":
             if "captured" in log:
                 id = get_packet_info(log)
+                assert(ts != None)
                 assert(id in self.packet_lifetime_infos.keys())
-                self.packet_lifetime_infos[id][1] = ts
+                if self.packet_lifetime_infos[id][1] != False:
+                    self.packet_lifetime_infos[id][1] = min(ts, self.packet_lifetime_infos[id][1])
+                else:
+                    self.packet_lifetime_infos[id][1] = ts
 
             if "through" in log and "hops" in log:
                 id, num_of_hops = get_number_of_hops(log)
                 assert(id in self.packet_lifetime_infos.keys())
-                self.packet_lifetime_infos[id][2] = int(num_of_hops)
+                if self.packet_lifetime_infos[id][2] != False:
+                    self.packet_lifetime_infos[id][2] = min(int(num_of_hops), self.packet_lifetime_infos[id][2])
+                else:
+                    self.packet_lifetime_infos[id][2] = int(num_of_hops)
 
         elif mode == "node":
             if "received" in log:

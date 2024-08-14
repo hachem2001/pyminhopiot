@@ -7,7 +7,7 @@ from copy import deepcopy
 import nographs # For finding smallest path from source to gateway
 import numpy as np; import numpy.ma as ma
 from matplotlib import pyplot as plt; from matplotlib.figure import Figure; from matplotlib.axes import Axes
-from math import ceil
+from math import ceil, inf
 
 from .main import Simulator, Channel, Logger, NODE_LOGGER, GATEWAY_LOGGER, SOURCE_LOGGER, SIMULATOR_LOGGER, CHANNEL_LOGGER, EVENT_LOGGER, Simulator
 from .lpwan_jitter import NodeLP, PacketLP, SourceLP, GatewayLP, NodeLP_Jitter_Configuration
@@ -71,19 +71,25 @@ def get_plotting_parameters(sim_params: SimulationParameters):
 def find_oracle_num_of_hops(all_data: Simulatable_MetadataAugmented_Dumpable_Network_Object):
     """ Returns the optimal minimum number of hops from source to gateway on the simulation """
     source_id = all_data.source_ids[0]
-    gateway_id = all_data.gateway_ids[0]
+    gateway_ids = all_data.gateway_ids
 
     channel = all_data.channel
     source = all_data.nodes[source_id]
-    gateway = all_data.nodes[gateway_id]
+    gateways = [all_data.nodes[gateway_id] for gateway_id in gateway_ids]
 
-    traversal = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source.get_id())
-    depths = {vertex: traversal.depth for vertex in traversal.go_for_depth_range(0, len(all_data.nodes))}
+    minimal_depth = inf
 
-    if gateway.get_id() not in depths.keys():
-        raise AssertionError("No possible path from source to gateway.")
-    else:
-        return depths[gateway.get_id()]
+    print(gateway_ids)
+
+    for gateway in gateways:
+        traversal = nographs.TraversalBreadthFirst(lambda i,_: channel.get_neighbour_ids(i)).start_from(source.get_id())
+        depths = {vertex: traversal.depth for vertex in traversal.go_for_depth_range(0, len(all_data.nodes))}
+        if gateway.get_id() not in depths.keys():
+            raise AssertionError("No possible path from source to one of the gateways.")
+        else:
+            minimal_depth = min(minimal_depth, depths[gateway.get_id()])
+
+    return minimal_depth
 
 
 def include_simulation_in_figure(ax1: Axes, ax2: Axes, ax3: Axes, ax4: Axes,\
@@ -257,9 +263,6 @@ def include_simulation_in_figure(ax1: Axes, ax2: Axes, ax3: Axes, ax4: Axes,\
         metric['mean'] = l_m
         metric['standard'] = [l_std_1, l_std_2]
 
-
-    print(metrics)
-
     # Done cleaning
     linestyle = {"markeredgewidth":1.5, "elinewidth":1.5, "capsize":2.5}
     final_sucess_deviation_up_and_down = [metrics['success']['standard'][0], metrics['success']['standard'][1]]
@@ -275,9 +278,11 @@ def include_simulation_in_figure(ax1: Axes, ax2: Axes, ax3: Axes, ax4: Axes,\
     if True:
         positions = deepcopy(retx_binedges_all[0][:-1])
         offset_index = all_modes.index(mode)
-        num_of_modes = len(all_modes)
-        positions = [x + offset_index*retx_amount_interval_length/num_of_modes for x in positions]
-        ax4.bar(positions, metrics['retx']['mean'], yerr=metrics['retx']['standard'], width=retx_amount_interval_length/num_of_modes * 0.75, label=mode, error_kw = {'errorevery':2, 'capsize':1, 'elinewidth':0.75})
+        num_of_modes = len(all_modes) + 1
+        width = retx_amount_interval_length/num_of_modes
+
+        positions = np.array(positions) + offset_index*width
+        ax4.bar(positions, metrics['retx']['mean'], yerr=metrics['retx']['standard'], width=width, label=mode, error_kw = {'errorevery':2, 'capsize':1, 'elinewidth':0.75})
 
         """
         plt.hist(transmission_times_combined, edgecolor="indigo", bins=range(int(min(transmission_times_combined)), int(max(transmission_times_combined) + SOURCE_RECURRENT_TRANSMISSIONS_DELAY), int(SOURCE_RECURRENT_TRANSMISSIONS_DELAY)), label = label_names[counter_label_name])
