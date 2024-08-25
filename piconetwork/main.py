@@ -3,7 +3,7 @@ import time
 from io import StringIO
 from math import sqrt
 from typing import Callable, Any, Dict, List, Optional
-
+import random
 """
 OUERTANI Mohamed Hachem <omhx21@gmail.com>
 
@@ -210,7 +210,7 @@ class Channel:
             self.assign_node(node)
 
     def create_bidirectional_link(self, node_id_1: int, node_id_2: int,
-                                  delay: float):
+                                  delay: float, reliability: float = 1.0):
         """
         Create bi-directional link
         """
@@ -218,11 +218,11 @@ class Channel:
         assert (self.assigned_nodes[node_id_1] != None)
         assert (self.assigned_nodes[node_id_2] != None)
 
-        self.create_unidirectional_link(node_id_1, node_id_2, delay)
-        self.create_unidirectional_link(node_id_2, node_id_1, delay)
+        self.create_unidirectional_link(node_id_1, node_id_2, delay, reliability)
+        self.create_unidirectional_link(node_id_2, node_id_1, delay, reliability)
 
     def create_unidirectional_link(self, node_id_1: int, node_id_2: int,
-                                   delay: float):
+                                   delay: float, reliability: float = 1.0):
         """
         Create unidirectional link
         """
@@ -230,7 +230,7 @@ class Channel:
         assert (self.assigned_nodes[node_id_1] != None)
         assert (self.assigned_nodes[node_id_2] != None)
 
-        self.adjacencies_per_node[node_id_1].append((node_id_2, delay))
+        self.adjacencies_per_node[node_id_1].append((node_id_2, delay, reliability))
 
     def check_link(self, node_id_1: int, node_id_2: int, unidirectional: bool = False) -> bool:
         """
@@ -238,7 +238,7 @@ class Channel:
         if unidirectional : only node_id_1 -> node_id_2
         """
         return_value = False
-        for (id_, distance) in self.adjacencies_per_node[node_id_1]:
+        for (id_, distance, _) in self.adjacencies_per_node[node_id_1]:
             if id_ == node_id_2:
                 return_value = True
 
@@ -246,7 +246,7 @@ class Channel:
             return False
 
         if not unidirectional:
-            for (id_, distance) in self.adjacencies_per_node[node_id_2]:
+            for (id_, distance, _) in self.adjacencies_per_node[node_id_2]:
                 if id_ == node_id_1:
                     return True
 
@@ -260,7 +260,7 @@ class Channel:
         id_to_return = -1
 
         for i in range(len(self.adjacencies_per_node[node_id_1])):
-            (id_, distance) = self.adjacencies_per_node[node_id_1][i]
+            (id_, distance, _) = self.adjacencies_per_node[node_id_1][i]
             if id_ == node_id_2:
                 id_to_return = i
         return id_to_return
@@ -270,7 +270,7 @@ class Channel:
         Return list of indices of connected neighbours.
         """
         result = set()
-        for (_id, distance) in self.adjacencies_per_node[node_id]:
+        for _id, distance, reliability in self.adjacencies_per_node[node_id]:
             result.add(_id)
 
         return list(result)
@@ -281,11 +281,31 @@ class Channel:
         id_in_list_of_node_2 = self._get_link_list_index(node_id_1, node_id_2)
         return self.adjacencies_per_node[node_id_1][id_in_list_of_node_2][1]
 
+    def set_reliability_unidirectional(self, node_id_1: int, node_id_2: int, reliability: float):
+        """ Sets the reliability of the transmission node_id_1 -> node_id_2. """
+        assert(self.check_link(node_id_1, node_id_2, unidirectional = True) == True) # Assert the link exists.
+        assert(reliability <= 1.0 and reliability >= 0.0) # Assert the link exists.
+        id_in_list_of_node_2 = self._get_link_list_index(node_id_1, node_id_2)
+        self.adjacencies_per_node[node_id_1][id_in_list_of_node_2] = (self.adjacencies_per_node[node_id_1][id_in_list_of_node_2][0], self.adjacencies_per_node[node_id_1][id_in_list_of_node_2][1], reliability)
+        CHANNEL_LOGGER.log(f"Set reliability from {node_id_1} to {node_id_2} to {reliability}")
+
+    def set_reliability(self, node_id_1: int, node_id_2: int, reliability: float, unidirectional:bool = False):
+        """ Sets the reliability of the transmission node_id_1 <---> node_id_2. """
+        self.set_reliability_unidirectional(node_id_1, node_id_2, reliability)
+        if not unidirectional:
+            self.set_reliability_unidirectional(node_id_2, node_id_1, reliability)
+
+    def set_reliability_all(self, reliability:float):
+        """ Sets the reliability of ALL links """
+        for sender_id in self.adjacencies_per_node.keys():
+            for (node_id, distance, _) in self.adjacencies_per_node[sender_id]:
+                self.set_reliability_unidirectional(sender_id, node_id, reliability)
+
     def get_time_delay(self, node_id_1: int, node_id_2: int):
         """ Returns the time delay for node_id_1 -> node_id_2 if it exists. """
         return self.packet_delay_per_distance_unit * self.get_distance(node_id_1, node_id_2)
 
-    def create_metric_mesh(self, distance_threshold: float, *args: 'Node'):
+    def create_metric_mesh(self, distance_threshold: float, *args: 'Node', reliability:float = 1.0):
         """
         Assign the nodes, and creates the adjacenties using x,y distance
         between nodes.
@@ -299,19 +319,20 @@ class Channel:
                         not self.check_link(node.get_id(), other_node.get_id()) and \
                         node.distance_to(other_node) <= distance_threshold:
                     self.create_bidirectional_link(node.get_id(),
-                                                   other_node.get_id(), node.distance_to(other_node))
-                    CHANNEL_LOGGER.log(f"Created link ({node.get_id()}, {node.x:.2f}, {node.y:.2f}), ({other_node.get_id()}, {other_node.x:.2f}, {other_node.y:.2f})")
+                                                   other_node.get_id(), node.distance_to(other_node), reliability)
+                    CHANNEL_LOGGER.log(f"Created link ({node.get_id()}, {node.x:.2f}, {node.y:.2f}), ({other_node.get_id()}, {other_node.x:.2f}, {other_node.y:.2f}), {reliability}")
 
     def handle_transmission(self, simulator: 'Simulator',
                             packet: 'Packet', sender_id: int):
         """ As the name implies. It creates the appropriate events. """
         # Send packet to all adjacent points
-        for (node_id, distance) in self.adjacencies_per_node[sender_id]:
-            new_packet = packet.forward(sender_id)
-            new_packet.add_to_path(node_id)  # Add ID of receiver to its path.
-            delay = distance * self.packet_delay_per_distance_unit
-            simulator.schedule_event(delay,
-                                     self.assigned_nodes[node_id].receive_packet, new_packet)
+        for (node_id, distance, reliability) in self.adjacencies_per_node[sender_id]:
+            if random.random() < reliability:
+                new_packet = packet.forward(sender_id)
+                new_packet.add_to_path(node_id)  # Add ID of receiver to its path.
+                delay = distance * self.packet_delay_per_distance_unit
+                simulator.schedule_event(delay,
+                    self.assigned_nodes[node_id].receive_packet, new_packet)
             #CHANNEL_LOGGER.log(f"channel registered packet from {sender_id} to {node_id}")
 
 class Node(Loggable):

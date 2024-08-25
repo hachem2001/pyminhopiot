@@ -3,7 +3,8 @@ import argparse
 from typing import List, Tuple, Optional
 
 from piconetwork.simulutils import SimulationParameters, GenerationParameters, \
-    Simulatable_MetadataAugmented_Dumpable_Network_Object, generate_topology, run_simulation
+    Simulatable_MetadataAugmented_Dumpable_Network_Object, generate_topology, run_simulation, \
+    VALID_TOPOLOGIES, VALID_MODES, VALID_LOGS
 
 from piconetwork.main import Simulator, Channel, Logger, \
     NODE_LOGGER, GATEWAY_LOGGER, SOURCE_LOGGER, SIMULATOR_LOGGER, CHANNEL_LOGGER, EVENT_LOGGER
@@ -35,11 +36,6 @@ Steps :
             - Length of path of packets over time ?
     6) Write TODO list of all this
 """
-
-VALID_MODES = ["FLOODING", "SLOWFLOODING", "FASTFLOODING", "REGULAR", "CONSERVATIVE", "AGGRESSIVE", "BOLD"]
-VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss", "two_gateways_switch_middle_random_linear"]
-VALID_LOGS = ["node", "gateway", "source", "simulator", "channel", "event"]
-LOGGERS_DICT = {'node': NODE_LOGGER, 'gateway': GATEWAY_LOGGER, 'source': SOURCE_LOGGER, 'channel': CHANNEL_LOGGER, 'event':EVENT_LOGGER, 'simulator': SIMULATOR_LOGGER}
 
 def init_argparse() -> argparse.ArgumentParser:
     """ Credits : https://realpython.com/python-command-line-arguments/#the-python-standard-library as of 2024 """
@@ -170,6 +166,11 @@ def init_argparse() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--gradually_decrease_reliability_over_count", action='store_true',
+        help="Whether to gradually decrease sensitivity over count.",
+    )
+
+    parser.add_argument(
         "--recurrence_count", type=float,
         help="How many times the source emits a message. OVERWRITES TOTAL SIMULATION TIME IF SET.",
     )
@@ -214,6 +215,7 @@ def main() -> None:
     show_network : bool = args.show_network
     do_save_logs_or_not_option : bool = args.save
     recurrence_count : Optional[float] = None
+    gradually_decrease_reliability_over_count: bool = args.gradually_decrease_reliability_over_count
     if args.recurrence_count:
         recurrence_count = args.recurrence_count
 
@@ -253,8 +255,10 @@ def main() -> None:
         jitter_max_value = jitter_max, jitter_min_value = jitter_min,
         adaptation_factor = adaptation_factor, sources_recurrent_transmission_delays = source_recurrent_delays,
         simulation_slowness = simulation_slowness,
-        simulation_total_duration=recurrence_count != None and recurrence_count * max(source_recurrent_delays) or simulation_length
+        simulation_total_duration=recurrence_count != None and recurrence_count * max(source_recurrent_delays) or simulation_length,
+        sensitivity_of_all_links=((0.0, 1.0),)
     )
+
     print("Simulation arguments : ", args)
 
     # First : generate topology
@@ -285,11 +289,16 @@ def main() -> None:
         for i in range(len(modes)):
 
             simulation_parameters.nodes_mode = modes[i]
+
+            if gradually_decrease_reliability_over_count:
+                simulation_parameters.sensitivity_of_all_links = ((0.0, 1.0), (simulation_parameters.simulation_total_duration/2.0, 0.85 + (1-0.85)* (1/count * (count-counter))** 1) )
+                print("Reliabilities : ", simulation_parameters.sensitivity_of_all_links)
+
             # Generate full meta_data object
             simulation_full_parameters_and_metadata = Simulatable_MetadataAugmented_Dumpable_Network_Object(
                 nodes=nodes_all, loggers_effective=savelogs, loggers_verbose=showlogs,
                 simulation_parameters=simulation_parameters,generation_parameters=generation_parameters,
-                source_ids=source_ids, gateway_ids=gateway_ids, nodes_ids=node_ids,channel=channel
+                source_ids=source_ids, gateway_ids=gateway_ids, nodes_ids=node_ids, channel=channel
             )
 
             # Name of associated files :
@@ -299,7 +308,7 @@ def main() -> None:
             file_topology_info_name = zip_prefix + "_topology_info"
 
             # Check if files of the same name exist already
-
+            # TODO
 
             # Run simulation!
             run_simulation(simulation_full_parameters_and_metadata, file_logs_name, file_topology_info_name,

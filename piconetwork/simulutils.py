@@ -16,7 +16,7 @@ from .graphical import plot_nodes_lpwan_better;
 Simulation utils contain classes, datastructures and functions that are helpful for simulating scenarios, and analyzing logs for graphs
 """
 
-# VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss", "two_gateways_switch_middle_random_linear"]
+VALID_TOPOLOGIES = ["random_gauss", "random_linear", "stretched_random_gauss", "two_gateways_random_linear", "two_gateways_switch_middle_random_linear"]
 VALID_MODES = ["FLOODING", "SLOWFLOODING", "FASTFLOODING", "REGULAR", "CONSERVATIVE", "AGGRESSIVE", "BOLD"]
 VALID_LOGS = ["node", "gateway", "source", "simulator", "channel", "event"]
 LOGGERS_DICT = {'node': NODE_LOGGER, 'gateway': GATEWAY_LOGGER, 'source': SOURCE_LOGGER, 'channel': CHANNEL_LOGGER, 'event':EVENT_LOGGER, 'simulator': SIMULATOR_LOGGER}
@@ -36,11 +36,11 @@ class SimulationParameters:
     sources_recurrent_transmission_delays: Tuple[float, ...] = (_default_jitter_max_factor * 20,)
     simulation_total_duration: float = _default_jitter_max_factor * 20 * 90
     simulation_slowness: float = 0.0 # 1.0 would be "real-time".
+    sensitivity_of_all_links: Tuple[Tuple[float, float], ...] = ((0.0, 1.0),) # (time, reliability), (time, reliability), ...
 
 @dataclass
 class GenerationParameters:
     density: float = 2.3
-    hearing_radius: float = 10
     seed: Optional[int] = 0;
     n_to_generate:int = 200; # Does not correspond to the number of nodes in play.
     type_of_network: str = 'random_gauss' # there's also random_strip
@@ -107,7 +107,7 @@ def generate_topology(topology_parameters: GenerationParameters) -> Tuple[List[N
         pos = {i: (random.gauss(0, width/density), random.gauss(0, height/density)) for i in range(n)} # Position of nodes
         G = nx.random_geometric_graph(n, dim=2, radius=hearing_distance, pos=pos)
         largest_cc = G.subgraph(max(nx.connected_components(G), key=len)).copy() # Keep the biggest connected subgraph.
-    elif topology_parameters.type_of_network == 'two_gateways_switch_middle_random_linear':
+    elif topology_parameters.type_of_network in ['two_gateways_switch_middle_random_linear', 'two_gateways_random_linear']:
         width = n**(0.5) * hearing_distance * 1.41 / density
         height = n**(0.5) * hearing_distance / 1.41 / density
         pos = {i: (random.random() * width - width/2, random.random() * height - height/2) for i in range(n)} # Position of nodes
@@ -150,7 +150,7 @@ def generate_topology(topology_parameters: GenerationParameters) -> Tuple[List[N
     # (source, furthest_gateway, second_best_gateway)
     good_triplet = first_good_triplet[3] > second_good_triplet[3] and first_good_triplet or second_good_triplet
 
-    if not topology_parameters.type_of_network in ['two_gateways_switch_middle_random_linear']:
+    if not topology_parameters.type_of_network in ['two_gateways_switch_middle_random_linear', 'two_gateways_random_linear']:
         other_nodes = list(largest_cc.nodes); other_nodes.remove(good_triplet[0]); other_nodes.remove(good_triplet[1])
 
         # Now generate!
@@ -229,6 +229,7 @@ def run_simulation(network_and_metadata:Simulatable_MetadataAugmented_Dumpable_N
     loggers_effective = network_and_metadata.loggers_effective
     loggers_verbose = network_and_metadata.loggers_verbose
     simulation_parameters: SimulationParameters = network_and_metadata.simulation_parameters
+    generation_parameters: GenerationParameters = network_and_metadata.generation_parameters
     source_ids: List[int] = network_and_metadata.source_ids
     nodes_ids: List[int] = network_and_metadata.nodes_ids
     gateway_ids: List[int] = network_and_metadata.gateway_ids
@@ -247,6 +248,15 @@ def run_simulation(network_and_metadata:Simulatable_MetadataAugmented_Dumpable_N
     # Third - Simulate!
     if show_network:
         plot_nodes_lpwan_better(all_nodes, channel)
+
+    # To allow evolution of sensitivity at one point, useful for simulating performance
+    for (time_stamp, reliability) in simulation_parameters.sensitivity_of_all_links:
+        simulator.schedule_event(time_stamp+1e-3, lambda sim: (channel.set_reliability_all(reliability)) )
+
+    if generation_parameters.type_of_network == 'two_gateways_switch_middle_random_linear':
+        all_nodes[gateway_ids[0]].set_enabled(True); all_nodes[gateway_ids[1]].set_enabled(False)
+        simulator.schedule_event(simulation_parameters.simulation_total_duration/2.0, lambda sim: (all_nodes[gateway_ids[0]].set_enabled(False), all_nodes[gateway_ids[1]].set_enabled(True)) )
+        simulator.schedule_event(simulation_parameters.simulation_total_duration/2.0 + 1, lambda sim: plot_nodes_lpwan_better(all_nodes, channel) )
 
     for source in source_ids: source_node = all_nodes[source];assert isinstance(source_node, SourceLP);source_node.start_sending(simulator)
     random.seed() # Randomize simulation seed.
